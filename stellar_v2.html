@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>STELLAR HANDS — ULTRA</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;}
+        body{overflow:hidden;background:#000;font-family:'Share Tech Mono',monospace;color:#fff;}
+        canvas{display:block;}
+
+        /* OVERLAY */
+        #overlay-start{
+            position:fixed;inset:0;background:radial-gradient(ellipse at 50% 60%, #050a1a 0%, #000 80%);
+            display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2000;
+        }
+        .title-wrap{text-align:center;margin-bottom:40px;}
+        .title-main{font-family:'Orbitron',sans-serif;font-weight:900;font-size:clamp(2.5rem,7vw,5rem);
+            background:linear-gradient(135deg,#00d4ff,#0066ff,#7c3aed,#00d4ff);
+            background-size:300% 300%;animation:hueshift 4s linear infinite;
+            -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+            letter-spacing:0.15em;line-height:1;}
+        .title-sub{font-size:clamp(0.6rem,1.5vw,0.85rem);color:#3b82f6;letter-spacing:0.4em;margin-top:10px;opacity:0.7;}
+        @keyframes hueshift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+
+        .scanlines{position:fixed;inset:0;pointer-events:none;z-index:9999;
+            background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);}
+
+        #status-line{font-size:0.7rem;color:#00d4ff;letter-spacing:0.2em;margin-bottom:30px;opacity:0.8;}
+
+        #btn-launch{
+            font-family:'Orbitron',sans-serif;font-weight:700;font-size:1rem;letter-spacing:0.25em;
+            background:transparent;border:1px solid #00d4ff;color:#00d4ff;
+            padding:16px 52px;border-radius:3px;cursor:pointer;position:relative;overflow:hidden;
+            transition:color 0.3s,box-shadow 0.3s;
+        }
+        #btn-launch::before{content:'';position:absolute;inset:0;background:#00d4ff;transform:scaleX(0);transform-origin:left;transition:transform 0.4s ease;}
+        #btn-launch:hover::before{transform:scaleX(1);}
+        #btn-launch:hover{color:#000;box-shadow:0 0 30px #00d4ff66;}
+        #btn-launch span{position:relative;z-index:1;}
+
+        /* MAIN UI */
+        #main-ui{position:absolute;top:18px;left:18px;z-index:50;width:270px;display:none;}
+        .panel{background:rgba(5,10,25,0.88);border:1px solid rgba(0,212,255,0.15);border-radius:4px;padding:16px;backdrop-filter:blur(16px);}
+        .panel-title{font-family:'Orbitron',sans-serif;font-weight:700;font-size:0.85rem;letter-spacing:0.2em;color:#00d4ff;margin-bottom:12px;}
+        .shapes-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px;}
+        .btn-shape{
+            font-family:'Share Tech Mono',monospace;font-size:0.65rem;letter-spacing:0.1em;
+            background:rgba(0,212,255,0.04);border:1px solid rgba(0,212,255,0.15);
+            color:rgba(255,255,255,0.55);padding:8px 6px;border-radius:3px;cursor:pointer;
+            transition:all 0.2s;text-transform:uppercase;
+        }
+        .btn-shape:hover{background:rgba(0,212,255,0.12);color:#fff;border-color:rgba(0,212,255,0.5);}
+        .btn-shape.active{background:rgba(0,212,255,0.2);border-color:#00d4ff;color:#00d4ff;}
+
+        .gesture-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+        .gesture-icon{font-size:1.4rem;min-width:28px;text-align:center;}
+        .gesture-label{font-size:0.62rem;color:rgba(255,255,255,0.45);line-height:1.4;}
+
+        #gesture-display{
+            position:absolute;top:18px;right:18px;z-index:50;
+            background:rgba(5,10,25,0.88);border:1px solid rgba(0,212,255,0.2);
+            border-radius:4px;padding:10px 18px;backdrop-filter:blur(16px);
+            font-family:'Orbitron',sans-serif;font-size:0.75rem;letter-spacing:0.2em;color:#00d4ff;
+            text-align:center;min-width:170px;
+        }
+        .gd-label{font-size:0.55rem;color:rgba(255,255,255,0.35);letter-spacing:0.2em;margin-bottom:4px;}
+        #gesture-text{color:#00d4ff;}
+
+        /* CAMERA PREVIEW */
+        #camera-preview{
+            position:absolute;bottom:20px;right:20px;width:190px;height:140px;
+            border-radius:4px;border:1px solid rgba(0,212,255,0.4);background:#050a1a;
+            transform:scaleX(-1);overflow:hidden;z-index:100;
+        }
+        #skeleton-canvas{position:absolute;top:0;left:0;width:100%;height:100%;}
+
+        /* PARTICLE COUNT HUD */
+        #hud{position:absolute;bottom:20px;left:18px;z-index:50;
+            background:rgba(5,10,25,0.75);border:1px solid rgba(0,212,255,0.12);
+            border-radius:3px;padding:8px 14px;font-size:0.6rem;letter-spacing:0.15em;color:rgba(255,255,255,0.4);}
+        #hud span{color:#00d4ff;}
+
+        /* GESTURE GUIDE SIDE */
+        #gesture-guide{
+            position:absolute;top:50%;right:18px;transform:translateY(-50%);z-index:50;
+            background:rgba(5,10,25,0.82);border:1px solid rgba(0,212,255,0.12);
+            border-radius:4px;padding:12px 14px;backdrop-filter:blur(16px);font-size:0.58rem;
+            color:rgba(255,255,255,0.4);letter-spacing:0.1em;max-width:155px;
+        }
+        #gesture-guide .gg-title{color:#00d4ff;font-size:0.6rem;letter-spacing:0.2em;margin-bottom:8px;}
+        .gg-row{display:flex;align-items:center;gap:7px;margin-bottom:5px;}
+        .gg-em{font-size:1.1rem;}
+        .gg-desc{line-height:1.3;}
+    </style>
+</head>
+<body>
+
+<div class="scanlines"></div>
+
+<!-- SPLASH -->
+<div id="overlay-start">
+    <div class="title-wrap">
+        <div class="title-main">STELLAR HANDS</div>
+        <div class="title-sub">ULTRA PARTICLE ENGINE — 120K STARS</div>
+    </div>
+    <div id="status-line">[ SYSTEM READY — CAMERA PERMISSION REQUIRED ]</div>
+    <button id="btn-launch"><span>INITIALIZE ENGINE</span></button>
+</div>
+
+<!-- MAIN UI -->
+<div id="main-ui">
+    <div class="panel">
+        <div class="panel-title">SHAPE SELECT</div>
+        <div class="shapes-grid">
+            <button class="btn-shape active" onclick="setTemplate('galaxy',this)">🌌 Galaxy</button>
+            <button class="btn-shape" onclick="setTemplate('heart',this)">❤️ Heart</button>
+            <button class="btn-shape" onclick="setTemplate('flower',this)">🌸 Flower</button>
+            <button class="btn-shape" onclick="setTemplate('saturn',this)">🪐 Saturn</button>
+            <button class="btn-shape" onclick="setTemplate('starship',this)">🚀 Starship</button>
+            <button class="btn-shape" onclick="setTemplate('spacecraft',this)">🛸 Spacecraft</button>
+            <button class="btn-shape" onclick="setTemplate('cat',this)">🐱 Cat</button>
+            <button class="btn-shape" onclick="setTemplate('human',this)">🧍 Human</button>
+            <button class="btn-shape" onclick="setTemplate('dna',this)">🧬 DNA</button>
+            <button class="btn-shape" onclick="setTemplate('nebula',this)">☁️ Nebula</button>
+        </div>
+    </div>
+</div>
+
+<!-- GESTURE DISPLAY TOP RIGHT -->
+<div id="gesture-display">
+    <div class="gd-label">ACTIVE GESTURE</div>
+    <div id="gesture-text">AWAITING...</div>
+</div>
+
+<!-- GESTURE GUIDE SIDE -->
+<div id="gesture-guide">
+    <div class="gg-title">// GESTURE MAP</div>
+    <div class="gg-row"><span class="gg-em">✊</span><span class="gg-desc">FIST → implode</span></div>
+    <div class="gg-row"><span class="gg-em">🤏</span><span class="gg-desc">PINCH → attract</span></div>
+    <div class="gg-row"><span class="gg-em">☝️</span><span class="gg-desc">1 FINGER → laser</span></div>
+    <div class="gg-row"><span class="gg-em">✌️</span><span class="gg-desc">2 FINGERS → split</span></div>
+    <div class="gg-row"><span class="gg-em">🤟</span><span class="gg-desc">3 FINGERS → orbit</span></div>
+    <div class="gg-row"><span class="gg-em">🖐️</span><span class="gg-desc">OPEN → repel</span></div>
+    <div class="gg-row"><span class="gg-em">👌</span><span class="gg-desc">OK SIGN → vortex</span></div>
+</div>
+
+<!-- CAMERA PREVIEW -->
+<div id="camera-preview">
+    <video id="input-video" class="hidden" playsinline style="display:none;"></video>
+    <canvas id="skeleton-canvas"></canvas>
+</div>
+
+<!-- HUD -->
+<div id="hud">PARTICLES: <span>120,000</span> &nbsp;|&nbsp; SHAPE: <span id="hud-shape">GALAXY</span></div>
+
+<script>
+// ─── CONFIG ────────────────────────────────────────────────────────────────
+const COUNT = 120000;
+
+// ─── GLOBALS ───────────────────────────────────────────────────────────────
+let scene, camera, renderer, points;
+let posArr, velArr, targetArr, colorArr;
+let handX = 0, handY = 0, isHandActive = false;
+let currentGesture = 'open';
+let orbitAngle = 0;
+
+// ─── SHAPE GENERATORS ──────────────────────────────────────────────────────
+function getPositions(type) {
+    const p = new Float32Array(COUNT * 3);
+    const c = new Float32Array(COUNT * 3);
+
+    for (let i = 0; i < COUNT; i++) {
+        let x = 0, y = 0, z = 0, r = 1, g = 1, b = 1;
+        const i3 = i * 3;
+        const rnd = Math.random;
+
+        switch(type) {
+
+            case 'galaxy': {
+                const arms = 3;
+                const arm = Math.floor(rnd() * arms);
+                const d = Math.pow(rnd(), 0.6) * 28;
+                const base = (arm / arms) * Math.PI * 2;
+                const twist = d * 0.38;
+                const spread = (1 - d/28) * 0.8 + 0.1;
+                x = d * Math.cos(base + twist) + (rnd()-0.5)*spread*4;
+                y = (rnd()-0.5) * (28-d) * 0.2 + (rnd()-0.5)*0.5;
+                z = d * Math.sin(base + twist) + (rnd()-0.5)*spread*4;
+                const t = d/28;
+                r = 0.2 + t*0.8; g = 0.4 + (1-t)*0.5; b = 1 - t*0.5;
+                if (rnd() < 0.02) { r=1;g=1;b=1; } // bright core stars
+                break;
+            }
+
+            case 'heart': {
+                const angle = rnd() * Math.PI * 2;
+                const scale = 0.6 + rnd() * 0.6;
+                x = 16 * Math.pow(Math.sin(angle),3) * scale;
+                y = (13*Math.cos(angle) - 5*Math.cos(2*angle) - 2*Math.cos(3*angle) - Math.cos(4*angle)) * scale;
+                z = (rnd()-0.5) * 3;
+                const depth = Math.abs(z)/2;
+                r = 1; g = 0.1 + depth*0.1; b = 0.2 + depth*0.2;
+                if (rnd() < 0.05) { r=1;g=0.8;b=0.9; } // sparkle
+                break;
+            }
+
+            case 'saturn': {
+                if (rnd() > 0.35) {
+                    // rings - multiple bands
+                    const band = Math.floor(rnd()*4);
+                    const rMin = 12 + band*2.5, rMax = rMin + 2;
+                    const rad = rMin + rnd()*(rMax-rMin);
+                    const a = rnd()*Math.PI*2;
+                    x = rad*Math.cos(a); y = (rnd()-0.5)*1.5; z = rad*Math.sin(a);
+                    r = 0.95 - band*0.05; g = 0.85 - band*0.03; b = 0.5 + band*0.05;
+                } else {
+                    // planet body
+                    const phi = rnd()*Math.PI*2, th = Math.acos(2*rnd()-1);
+                    const rad = 8 + rnd()*2;
+                    x = rad*Math.sin(th)*Math.cos(phi);
+                    y = rad*Math.sin(th)*Math.sin(phi);
+                    z = rad*Math.cos(th);
+                    r = 1; g = 0.85; b = 0.5;
+                }
+                break;
+            }
+
+            case 'flower': {
+                const petals = 6;
+                const pAngle = rnd()*Math.PI*2;
+                const petNum = Math.floor(pAngle / (Math.PI*2/petals));
+                const pBase = petNum * (Math.PI*2/petals);
+                const rad = rnd()*14;
+                x = rad * Math.cos(pBase + Math.sin(pAngle*petals)*0.4);
+                y = rad * Math.sin(pBase + Math.sin(pAngle*petals)*0.4);
+                z = (rnd()-0.5) * 2;
+                const hue = petNum/petals;
+                r = 0.9 + Math.sin(hue*Math.PI*2)*0.1;
+                g = 0.3 + Math.sin(hue*Math.PI*2+2)*0.5;
+                b = 0.7 + Math.cos(hue*Math.PI*2)*0.3;
+                break;
+            }
+
+            case 'starship': {
+                // SpaceX Starship silhouette — simplified 2D point cloud
+                const part = rnd();
+                if (part < 0.3) {
+                    // Main cylinder body
+                    const h = (rnd()-0.5) * 22;
+                    const bodyR = 3.5;
+                    const a = rnd()*Math.PI*2;
+                    x = Math.cos(a)*bodyR*(0.85+rnd()*0.15);
+                    y = h;
+                    z = Math.sin(a)*bodyR*(0.85+rnd()*0.15);
+                    r=0.7;g=0.75;b=0.8;
+                } else if (part < 0.55) {
+                    // Nose cone
+                    const h2 = rnd()*8;
+                    const noseR = 3.5*(1-h2/8);
+                    const a = rnd()*Math.PI*2;
+                    x = Math.cos(a)*noseR; y = 11+h2; z = Math.sin(a)*noseR;
+                    r=0.8;g=0.85;b=0.9;
+                } else if (part < 0.72) {
+                    // Grid fins (4 fins at top of booster area)
+                    const finIdx = Math.floor(rnd()*4);
+                    const fa = (finIdx/4)*Math.PI*2;
+                    x = (3.8 + rnd()*1.5)*Math.cos(fa);
+                    y = 6 + (rnd()-0.5)*3;
+                    z = (3.8 + rnd()*1.5)*Math.sin(fa);
+                    r=0.5;g=0.55;b=0.6;
+                } else if (part < 0.88) {
+                    // Raptor engines (6 at bottom)
+                    const eIdx = Math.floor(rnd()*6);
+                    const ea = (eIdx/6)*Math.PI*2;
+                    const er = 2.2 + rnd()*0.5;
+                    x = Math.cos(ea)*er; y = -12 + (rnd()-0.5)*2; z = Math.sin(ea)*er;
+                    r=0.9;g=0.6;b=0.3;
+                } else {
+                    // Plume glow
+                    x = (rnd()-0.5)*8; y = -13 - rnd()*6; z = (rnd()-0.5)*8;
+                    const fade = rnd();
+                    r=1;g=0.5*fade;b=0.1*fade;
+                }
+                break;
+            }
+
+            case 'spacecraft': {
+                // Detailed UFO-style saucer craft
+                const sp = rnd();
+                if (sp < 0.35) {
+                    // Main disc
+                    const dr = rnd()*18, da = rnd()*Math.PI*2;
+                    x = dr*Math.cos(da); z = dr*Math.sin(da);
+                    y = (rnd()-0.5)*(2-dr/10)*3;
+                    const tc = dr/18;
+                    r=0.3+tc*0.5; g=0.6+tc*0.2; b=1-tc*0.3;
+                } else if (sp < 0.52) {
+                    // Upper dome
+                    const dph = rnd()*Math.PI, dth = rnd()*Math.PI*2;
+                    if (dph < Math.PI/2) {
+                        x=8*Math.sin(dph)*Math.cos(dth); y=2+7*Math.cos(dph); z=8*Math.sin(dph)*Math.sin(dth);
+                        r=0.6;g=0.9;b=1;
+                    } else { i--; continue; }
+                } else if (sp < 0.68) {
+                    // Portal windows ring
+                    const wN = 8, wIdx = Math.floor(rnd()*wN);
+                    const wa = (wIdx/wN)*Math.PI*2;
+                    x = 12*Math.cos(wa) + (rnd()-0.5); y = 1 + (rnd()-0.5); z = 12*Math.sin(wa) + (rnd()-0.5);
+                    r=1;g=1;b=0.5;
+                } else if (sp < 0.8) {
+                    // Landing struts
+                    const ls = Math.floor(rnd()*3);
+                    const la = (ls/3)*Math.PI*2;
+                    x = (16+rnd()*2)*Math.cos(la); y = -3 - rnd()*4; z = (16+rnd()*2)*Math.sin(la);
+                    r=0.6;g=0.6;b=0.7;
+                } else {
+                    // Thruster glow bottom
+                    const tgs = rnd()*14, tga = rnd()*Math.PI*2;
+                    x=tgs*Math.cos(tga); y=-2-(rnd()*3); z=tgs*Math.sin(tga);
+                    r=0.2;g=0.8;b=1;
+                }
+                break;
+            }
+
+            case 'cat': {
+                // Cat silhouette point cloud
+                const cp = rnd();
+                if (cp < 0.25) {
+                    // Body oval
+                    const ba = rnd()*Math.PI*2, br = rnd();
+                    x = 10*Math.sqrt(br)*Math.cos(ba); y = (rnd()-0.5)*7; z = (rnd()-0.5)*5;
+                    r=0.9;g=0.7;b=0.5;
+                } else if (cp < 0.45) {
+                    // Head circle
+                    const ha = rnd()*Math.PI*2, hr = rnd()*6;
+                    x = Math.sqrt(hr/6)*6*Math.cos(ha); y = 8 + Math.sqrt(hr/6)*6*Math.sin(ha); z = (rnd()-0.5)*4;
+                    r=0.95;g=0.75;b=0.55;
+                } else if (cp < 0.55) {
+                    // Left ear triangle
+                    const et = rnd(); 
+                    x = -4 + et*2; y = 14 + (1-et)*4 + rnd()*2; z = (rnd()-0.5)*2;
+                    r=0.85;g=0.6;b=0.5;
+                } else if (cp < 0.65) {
+                    // Right ear triangle
+                    const et2 = rnd();
+                    x = 2 + et2*3; y = 14 + (1-et2)*4 + rnd()*2; z = (rnd()-0.5)*2;
+                    r=0.85;g=0.6;b=0.5;
+                } else if (cp < 0.72) {
+                    // Tail curve
+                    const tt = rnd()*Math.PI;
+                    x = -10 + Math.cos(tt)*5; y = -3 + Math.sin(tt)*8; z = (rnd()-0.5)*2;
+                    r=0.9;g=0.7;b=0.5;
+                } else if (cp < 0.8) {
+                    // Eyes
+                    const eye = rnd() > 0.5;
+                    x = eye ? -2 : 2; y = 9 + rnd()*0.5; z = 2.5;
+                    r=0.3;g=0.8;b=0.3;
+                } else if (cp < 0.88) {
+                    // Whiskers
+                    const ws = Math.floor(rnd()*4);
+                    x = (ws < 2 ? -1:-1) + (ws%2===0?-1:1)*(6+rnd()*5);
+                    y = 7 + (rnd()-0.5)*1.5; z = 3;
+                    r=1;g=1;b=1;
+                } else {
+                    // Fur texture spots
+                    x = (rnd()-0.5)*20; y = (rnd()-0.5)*20; z = (rnd()-0.5)*4;
+                    if (Math.abs(x) > 10 || Math.abs(y) > 10) { i--; continue; }
+                    r=0.8;g=0.6;b=0.4;
+                }
+                break;
+            }
+
+            case 'human': {
+                // Human body outline
+                const hp = rnd();
+                if (hp < 0.08) {
+                    // Head
+                    const ha = rnd()*Math.PI*2, hr2 = rnd();
+                    x = Math.sqrt(hr2)*4*Math.cos(ha); y = 16 + Math.sqrt(hr2)*5*Math.sin(ha); z = (rnd()-0.5)*3;
+                    r=0.9;g=0.75;b=0.65;
+                } else if (hp < 0.22) {
+                    // Torso
+                    x = (rnd()-0.5)*8; y = 2 + rnd()*10; z = (rnd()-0.5)*3;
+                    r=0.3;g=0.5;b=0.9;
+                } else if (hp < 0.33) {
+                    // Left arm
+                    const at = rnd();
+                    x = -5 - at*3; y = 12 - at*10; z = (rnd()-0.5)*2;
+                    r=0.9;g=0.75;b=0.65;
+                } else if (hp < 0.44) {
+                    // Right arm
+                    const at2 = rnd();
+                    x = 5 + at2*3; y = 12 - at2*10; z = (rnd()-0.5)*2;
+                    r=0.9;g=0.75;b=0.65;
+                } else if (hp < 0.6) {
+                    // Left leg
+                    const lt = rnd();
+                    x = -3 - lt*1; y = 2 - lt*14; z = (rnd()-0.5)*2;
+                    r=0.3;g=0.3;b=0.7;
+                } else if (hp < 0.76) {
+                    // Right leg
+                    const lt2 = rnd();
+                    x = 3 + lt2*1; y = 2 - lt2*14; z = (rnd()-0.5)*2;
+                    r=0.3;g=0.3;b=0.7;
+                } else if (hp < 0.85) {
+                    // Shoes
+                    const shoe = rnd() > 0.5;
+                    x = (shoe?-3:3) + (rnd()-0.5)*3; y = -14 + (rnd()-0.5); z = rnd()*3;
+                    r=0.15;g=0.1;b=0.1;
+                } else {
+                    // Hair
+                    const ha2 = rnd()*Math.PI*2;
+                    const hr3 = 3.5 + rnd()*0.8;
+                    x = hr3*Math.cos(ha2); y = 20 + hr3*Math.sin(ha2)*0.6; z = (rnd()-0.5)*3;
+                    if (y < 20 && Math.sin(ha2) < 0) { i--; continue; }
+                    r=0.2;g=0.15;b=0.1;
+                }
+                break;
+            }
+
+            case 'dna': {
+                // DNA double helix
+                const strand = rnd() > 0.5 ? 1 : -1;
+                const t = (rnd()-0.5)*40;
+                const twist = t * 0.35;
+                x = strand * 6 * Math.cos(twist) + (rnd()-0.5);
+                y = t;
+                z = strand * 6 * Math.sin(twist) + (rnd()-0.5);
+                // Rungs between strands
+                if (rnd() < 0.15) {
+                    const rungt = Math.floor(rnd()*20) * 2 - 20;
+                    const ru = rnd();
+                    const tw2 = rungt*0.35;
+                    x = (ru*2-1)*6*Math.cos(tw2); y = rungt; z = (ru*2-1)*6*Math.sin(tw2);
+                    r=0.8;g=0.9;b=0.4;
+                } else {
+                    r = strand>0 ? 0.2 : 1;
+                    g = strand>0 ? 0.8 : 0.3;
+                    b = strand>0 ? 1 : 0.3;
+                }
+                break;
+            }
+
+            case 'nebula': {
+                // Cloud nebula with filaments
+                const nc = Math.floor(rnd()*4);
+                const cx = [0, 10, -8, 5][nc], cy = [0, 5, -4, -8][nc];
+                const nr = 10 + rnd()*6;
+                const na = rnd()*Math.PI*2;
+                x = cx + nr*Math.cos(na) + (rnd()-0.5)*6;
+                y = cy + nr*Math.sin(na)*0.7 + (rnd()-0.5)*6;
+                z = (rnd()-0.5)*10;
+                const hue2 = nc/4;
+                r = 0.5 + Math.sin(hue2*Math.PI*2)*0.5;
+                g = 0.3 + Math.cos(hue2*Math.PI*2+1)*0.4;
+                b = 0.8 + Math.sin(hue2*Math.PI+2)*0.2;
+                break;
+            }
+        }
+
+        p[i3]=x; p[i3+1]=y; p[i3+2]=z;
+        c[i3]=r; c[i3+1]=g; c[i3+2]=b;
+    }
+    return { p, c };
+}
+
+// ─── THREE.JS INIT ─────────────────────────────────────────────────────────
+function init() {
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.01, 2000);
+    camera.position.z = 55;
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setClearColor(0x000208);
+    document.body.prepend(renderer.domElement);
+
+    const data = getPositions('galaxy');
+    targetArr = data.p;
+    posArr = new Float32Array(COUNT*3);
+    velArr = new Float32Array(COUNT*3);
+    colorArr = data.c;
+
+    for (let i=0; i<COUNT*3; i++) posArr[i] = targetArr[i] + (Math.random()-0.5)*200;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    geo.setAttribute('color',    new THREE.BufferAttribute(colorArr, 3));
+
+    const mat = new THREE.PointsMaterial({
+        size: 0.12,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        sizeAttenuation: true,
+    });
+    points = new THREE.Points(geo, mat);
+    scene.add(points);
+
+    // Pointer fallback
+    window.addEventListener('pointermove', e => {
+        if (!isHandActive) {
+            handX = (e.clientX/innerWidth - 0.5)*80;
+            handY = (0.5 - e.clientY/innerHeight)*60;
+            if (e.buttons === 1) currentGesture = 'pinch';
+            else currentGesture = 'open';
+            updateGestureDisplay();
+        }
+    });
+    window.addEventListener('pointerdown', e => { if(!isHandActive){ currentGesture='pinch'; updateGestureDisplay(); }});
+    window.addEventListener('pointerup',   e => { if(!isHandActive){ currentGesture='open';  updateGestureDisplay(); }});
+
+    window.addEventListener('resize', () => {
+        camera.aspect = innerWidth/innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+    });
+
+    animate();
+}
+
+// ─── GESTURE DISPLAY ───────────────────────────────────────────────────────
+const GESTURE_LABELS = {
+    open:    '🖐️  OPEN — REPEL',
+    pinch:   '🤏 PINCH — ATTRACT',
+    fist:    '✊  FIST — IMPLODE',
+    one:     '☝️  1 FINGER — LASER',
+    two:     '✌️  2 FINGERS — SPLIT',
+    three:   '🤟 3 FINGERS — ORBIT',
+    ok:      '👌 OK — VORTEX',
+};
+function updateGestureDisplay() {
+    document.getElementById('gesture-text').textContent = GESTURE_LABELS[currentGesture] || currentGesture.toUpperCase();
+}
+
+// ─── PARTICLE ANIMATION LOOP ───────────────────────────────────────────────
+function animate() {
+    requestAnimationFrame(animate);
+    const p = points.geometry.attributes.position.array;
+    orbitAngle += 0.015;
+
+    for (let i=0; i<COUNT; i++) {
+        const i3 = i*3;
+        const px = p[i3], py = p[i3+1], pz = p[i3+2];
+        const tx = targetArr[i3], ty = targetArr[i3+1], tz = targetArr[i3+2];
+
+        // Spring toward target
+        velArr[i3]   += (tx - px) * 0.006;
+        velArr[i3+1] += (ty - py) * 0.006;
+        velArr[i3+2] += (tz - pz) * 0.006;
+
+        // Hand interaction
+        const dx = handX - px, dy = handY - py;
+        const dSq = dx*dx + dy*dy;
+        const radius = 40*40;
+
+        if (dSq < radius) {
+            const dist = Math.sqrt(dSq);
+            const norm = dist < 0.001 ? 0 : 1/dist;
+
+            switch(currentGesture) {
+                case 'open': {
+                    const f = (1 - dist/40) * 0.055;
+                    velArr[i3]   -= dx*norm*f*dist*0.15;
+                    velArr[i3+1] -= dy*norm*f*dist*0.15;
+                    break;
+                }
+                case 'pinch': {
+                    const f = (1 - dist/40) * 0.05;
+                    velArr[i3]   += dx*norm*f*dist*0.12;
+                    velArr[i3+1] += dy*norm*f*dist*0.12;
+                    break;
+                }
+                case 'fist': {
+                    // Implode toward hand center hard
+                    const f = 0.08;
+                    velArr[i3]   += dx*f;
+                    velArr[i3+1] += dy*f;
+                    break;
+                }
+                case 'one': {
+                    // Laser: strong horizontal beam
+                    if (Math.abs(dy) < 4) {
+                        velArr[i3]   += (dx > 0 ? 1 : -1) * 0.5;
+                        velArr[i3+1] += (Math.random()-0.5)*0.3;
+                    }
+                    break;
+                }
+                case 'two': {
+                    // Split: push left/right
+                    velArr[i3]   += (px < handX ? -1:1) * 0.06 * (1-dist/40);
+                    velArr[i3+1] += (Math.random()-0.5) * 0.02;
+                    break;
+                }
+                case 'three': {
+                    // Orbit around hand
+                    const angle = Math.atan2(dy, dx) + orbitAngle * 0.05;
+                    const targetOrbitX = handX + dist * Math.cos(angle);
+                    const targetOrbitY = handY + dist * Math.sin(angle);
+                    velArr[i3]   += (targetOrbitX - px) * 0.025;
+                    velArr[i3+1] += (targetOrbitY - py) * 0.025;
+                    break;
+                }
+                case 'ok': {
+                    // Vortex: tangential spin + pull in
+                    const tangX = -dy*norm, tangY = dx*norm;
+                    const vortStr = (1 - dist/40) * 0.08;
+                    velArr[i3]   += tangX * vortStr;
+                    velArr[i3+1] += tangY * vortStr;
+                    velArr[i3]   += dx * 0.012;
+                    velArr[i3+1] += dy * 0.012;
+                    break;
+                }
+            }
+        }
+
+        // Damping
+        velArr[i3]   *= 0.93;
+        velArr[i3+1] *= 0.93;
+        velArr[i3+2] *= 0.93;
+
+        p[i3]   += velArr[i3];
+        p[i3+1] += velArr[i3+1];
+        p[i3+2] += velArr[i3+2];
+    }
+
+    points.geometry.attributes.position.needsUpdate = true;
+    points.rotation.y += 0.0008;
+    renderer.render(scene, camera);
+}
+
+// ─── SHAPE SWITCH ──────────────────────────────────────────────────────────
+function setTemplate(name, btn) {
+    const data = getPositions(name);
+    targetArr = data.p;
+    const cAttr = points.geometry.attributes.color;
+    for (let i=0; i<COUNT*3; i++) colorArr[i] = data.c[i];
+    cAttr.needsUpdate = true;
+    document.querySelectorAll('.btn-shape').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('hud-shape').textContent = name.toUpperCase();
+}
+
+// ─── MEDIAPIPE HAND AI ─────────────────────────────────────────────────────
+async function initAI() {
+    const video = document.getElementById('input-video');
+    const canvas = document.getElementById('skeleton-canvas');
+    const ctx = canvas.getContext('2d');
+
+    const stream = await navigator.mediaDevices.getUserMedia({video:{width:640,height:480,facingMode:'user'}});
+    video.srcObject = stream;
+    await video.play();
+
+    const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+    hands.setOptions({ maxNumHands:1, modelComplexity:1, minDetectionConfidence:0.65, minTrackingConfidence:0.65 });
+
+    hands.onResults(results => {
+        canvas.width  = video.videoWidth  || 640;
+        canvas.height = video.videoHeight || 480;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (results.multiHandLandmarks?.length > 0) {
+            isHandActive = true;
+            const lm = results.multiHandLandmarks[0];
+            drawConnectors(ctx, lm, HAND_CONNECTIONS, {color:'#00d4ff88', lineWidth:2});
+            drawLandmarks(ctx, lm, {color:'#00ffaa', lineWidth:1, radius:3});
+
+            handX = (0.5 - lm[9].x) * 110;
+            handY = (0.5 - lm[9].y) * 85;
+
+            currentGesture = detectGesture(lm);
+            updateGestureDisplay();
+        } else {
+            isHandActive = false;
+            document.getElementById('gesture-text').textContent = '— SEARCHING —';
+        }
+    });
+
+    const cam = new Camera(video, { onFrame: async () => await hands.send({image: video}) });
+    await cam.start();
+}
+
+// ─── GESTURE DETECTION ─────────────────────────────────────────────────────
+function detectGesture(lm) {
+    // Finger up detection via comparing tip Y to PIP joint Y
+    // (landmark indices: thumb=4, index=8,PIP=6; middle=12,PIP=10; ring=16,PIP=14; pinky=20,PIP=18)
+    const fingerUp = [
+        lm[4].x < lm[3].x, // thumb (horizontal check, mirrored)
+        lm[8].y  < lm[6].y,  // index
+        lm[12].y < lm[10].y, // middle
+        lm[16].y < lm[14].y, // ring
+        lm[20].y < lm[18].y  // pinky
+    ];
+    const count = fingerUp.filter(Boolean).length;
+
+    // Pinch distance (thumb tip to index tip)
+    const dPinch = Math.hypot(lm[4].x-lm[8].x, lm[4].y-lm[8].y);
+    // OK sign: thumb and index close, others open
+    const dOk = Math.hypot(lm[4].x-lm[8].x, lm[4].y-lm[8].y);
+    const okSign = dOk < 0.06 && fingerUp[2] && fingerUp[3] && fingerUp[4];
+
+    if (okSign) return 'ok';
+    if (dPinch < 0.05) return 'pinch';
+    if (count === 0) return 'fist';
+    if (count === 1 && fingerUp[1]) return 'one';
+    if (count === 2 && fingerUp[1] && fingerUp[2]) return 'two';
+    if (count === 3 && fingerUp[1] && fingerUp[2] && fingerUp[3]) return 'three';
+    if (count >= 4) return 'open';
+    return 'open';
+}
+
+// ─── LAUNCH HANDLER ────────────────────────────────────────────────────────
+document.getElementById('btn-launch').addEventListener('click', async () => {
+    document.getElementById('overlay-start').style.display = 'none';
+    document.getElementById('main-ui').style.display = 'block';
+    init();
+    try {
+        await initAI();
+    } catch(e) {
+        console.warn('Camera/AI init failed:', e);
+        // Fallback to mouse-only; already wired up in init()
+    }
+});
+</script>
+</body>
+</html>
