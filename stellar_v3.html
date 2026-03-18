@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>STELLAR — Particle Field Engine</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --accent: #4f9cf9;
+  --accent2: #a78bfa;
+  --fg: #e8eaf0;
+  --fg-dim: rgba(232,234,240,0.45);
+  --fg-faint: rgba(232,234,240,0.18);
+  --surface: rgba(8,10,18,0.92);
+  --surface-mid: rgba(14,17,30,0.88);
+  --border: rgba(255,255,255,0.07);
+  --border-accent: rgba(79,156,249,0.3);
+  --glow: 0 0 30px rgba(79,156,249,0.15);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Space Grotesk',sans-serif;color:var(--fg);}
+canvas{display:block;position:fixed;top:0;left:0;}
+
+/* ── SCANLINE OVERLAY ── */
+#scanlines{position:fixed;inset:0;z-index:1;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 1px,rgba(0,0,0,0.025) 1px,rgba(0,0,0,0.025) 2px);}
+#vignette{position:fixed;inset:0;z-index:1;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 50%, transparent 40%, rgba(0,0,0,0.65) 100%);}
+
+/* ── SPLASH ── */
+#splash{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at 50% 45%, #080c1a 0%, #000 70%);}
+#splash-grid{position:absolute;inset:0;
+  background-image:linear-gradient(rgba(79,156,249,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(79,156,249,0.04) 1px,transparent 1px);
+  background-size:60px 60px;mask-image:radial-gradient(ellipse at 50% 50%, black 30%, transparent 80%);}
+.splash-inner{position:relative;text-align:center;display:flex;flex-direction:column;align-items:center;}
+.splash-eyebrow{font-family:'JetBrains Mono',monospace;font-size:0.62rem;letter-spacing:0.35em;color:var(--accent);
+  text-transform:uppercase;margin-bottom:28px;opacity:0.8;}
+.splash-title{font-size:clamp(3.5rem,9vw,7rem);font-weight:700;letter-spacing:-0.02em;line-height:0.95;
+  background:linear-gradient(160deg,#fff 0%,rgba(255,255,255,0.6) 100%);-webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;background-clip:text;}
+.splash-title span{background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;background-clip:text;}
+.splash-desc{margin-top:20px;font-size:0.8rem;color:var(--fg-dim);letter-spacing:0.06em;font-weight:300;max-width:340px;line-height:1.7;}
+.splash-btn{margin-top:44px;padding:14px 48px;background:transparent;border:1px solid rgba(79,156,249,0.5);
+  color:var(--accent);font-family:'Space Grotesk',sans-serif;font-size:0.78rem;font-weight:600;
+  letter-spacing:0.2em;text-transform:uppercase;cursor:pointer;border-radius:2px;
+  transition:all 0.35s cubic-bezier(0.16,1,0.3,1);position:relative;overflow:hidden;}
+.splash-btn::after{content:'';position:absolute;inset:0;background:var(--accent);transform:scaleX(0);transform-origin:left;
+  transition:transform 0.35s cubic-bezier(0.16,1,0.3,1);z-index:-1;}
+.splash-btn:hover{color:#000;border-color:var(--accent);box-shadow:0 0 40px rgba(79,156,249,0.3);}
+.splash-btn:hover::after{transform:scaleX(1);}
+.splash-specs{display:flex;gap:32px;margin-top:32px;padding-top:28px;border-top:1px solid var(--border);}
+.spec{text-align:center;}
+.spec-val{font-family:'JetBrains Mono',monospace;font-size:1.1rem;font-weight:500;color:#fff;}
+.spec-lbl{font-size:0.58rem;letter-spacing:0.2em;color:var(--fg-faint);text-transform:uppercase;margin-top:2px;}
+
+/* ── MAIN UI ── */
+#ui{position:fixed;top:0;left:0;right:0;bottom:0;z-index:50;pointer-events:none;display:none;}
+
+/* LEFT PANEL */
+#panel-left{position:absolute;top:24px;left:24px;width:230px;pointer-events:all;}
+.panel-logo{font-size:0.68rem;font-weight:700;letter-spacing:0.3em;text-transform:uppercase;
+  color:var(--fg-faint);margin-bottom:20px;display:flex;align-items:center;gap:8px;}
+.panel-logo::before{content:'';width:20px;height:1px;background:var(--border-accent);}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:16px;margin-bottom:10px;backdrop-filter:blur(20px);}
+.card-title{font-family:'JetBrains Mono',monospace;font-size:0.6rem;letter-spacing:0.25em;
+  text-transform:uppercase;color:var(--fg-faint);margin-bottom:12px;}
+.shape-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+.shape-btn{background:transparent;border:1px solid var(--border);color:var(--fg-dim);
+  font-family:'Space Grotesk',sans-serif;font-size:0.68rem;font-weight:500;
+  padding:9px 8px;border-radius:4px;cursor:pointer;transition:all 0.2s;text-align:left;
+  display:flex;align-items:center;gap:6px;letter-spacing:0.02em;}
+.shape-btn .icon{font-size:0.9rem;opacity:0.7;}
+.shape-btn:hover{background:rgba(79,156,249,0.08);border-color:var(--border-accent);color:var(--fg);}
+.shape-btn.active{background:rgba(79,156,249,0.12);border-color:var(--accent);color:var(--accent);}
+.shape-btn.active .icon{opacity:1;}
+
+/* RIGHT PANEL */
+#panel-right{position:absolute;top:24px;right:24px;width:210px;pointer-events:all;}
+
+/* GESTURE CARD */
+.gesture-current{background:var(--surface);border:1px solid var(--border-accent);
+  border-radius:6px;padding:14px 16px;margin-bottom:10px;backdrop-filter:blur(20px);}
+.gc-label{font-family:'JetBrains Mono',monospace;font-size:0.55rem;letter-spacing:0.25em;
+  text-transform:uppercase;color:var(--fg-faint);margin-bottom:6px;}
+.gc-value{font-size:0.88rem;font-weight:600;color:var(--accent);letter-spacing:0.05em;}
+.gc-desc{font-size:0.62rem;color:var(--fg-dim);margin-top:3px;font-weight:300;}
+
+.gesture-list .g-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);}
+.gesture-list .g-row:last-child{border:none;}
+.g-icon{font-size:1.1rem;width:22px;text-align:center;}
+.g-info{}
+.g-name{font-size:0.65rem;font-weight:600;color:var(--fg);letter-spacing:0.05em;}
+.g-fx{font-size:0.58rem;color:var(--fg-faint);font-family:'JetBrains Mono',monospace;}
+
+/* BOTTOM BAR */
+#bottom-bar{position:absolute;bottom:0;left:0;right:0;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 24px;background:linear-gradient(transparent,rgba(0,0,0,0.6));pointer-events:none;}
+.stat{display:flex;flex-direction:column;align-items:center;}
+.stat-val{font-family:'JetBrains Mono',monospace;font-size:0.75rem;font-weight:500;color:var(--fg);}
+.stat-lbl{font-size:0.52rem;letter-spacing:0.2em;color:var(--fg-faint);text-transform:uppercase;margin-top:1px;}
+
+/* FPS */
+#fps-counter{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--fg-faint);}
+
+/* CAMERA PREVIEW */
+#cam-wrap{position:absolute;bottom:24px;right:24px;pointer-events:none;}
+#camera-box{width:160px;height:118px;border-radius:5px;overflow:hidden;border:1px solid var(--border-accent);
+  background:#050810;transform:scaleX(-1);position:relative;}
+#skeleton-canvas{position:absolute;inset:0;width:100%;height:100%;}
+#cam-label{font-family:'JetBrains Mono',monospace;font-size:0.52rem;letter-spacing:0.2em;
+  color:var(--fg-faint);text-align:right;margin-top:5px;text-transform:uppercase;}
+
+/* HOLD INDICATOR */
+#hold-ring{position:fixed;pointer-events:none;z-index:200;display:none;}
+#hold-ring svg{animation:none;}
+.hold-arc{fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round;
+  stroke-dasharray:188.4;stroke-dashoffset:188.4;transition:stroke-dashoffset 0.05s linear;}
+
+/* SLASH TRAIL */
+#slash-canvas{position:fixed;inset:0;z-index:150;pointer-events:none;}
+
+/* TRANSITION */
+.fade-out{animation:fadeOut 0.6s forwards;}
+@keyframes fadeOut{to{opacity:0;pointer-events:none;}}
+</style>
+</head>
+<body>
+<div id="scanlines"></div>
+<div id="vignette"></div>
+
+<!-- SPLASH -->
+<div id="splash">
+  <div id="splash-grid"></div>
+  <div class="splash-inner">
+    <div class="splash-eyebrow">Particle Field Engine v3.0</div>
+    <div class="splash-title">STELLAR<br><span>HANDS</span></div>
+    <div class="splash-desc">Real-time hand-tracked particle simulation. 150,000 dynamic particles with physics-based gestures.</div>
+    <div class="splash-specs">
+      <div class="spec"><div class="spec-val">150K</div><div class="spec-lbl">Particles</div></div>
+      <div class="spec"><div class="spec-val">8</div><div class="spec-lbl">Gestures</div></div>
+      <div class="spec"><div class="spec-val">10</div><div class="spec-lbl">Formations</div></div>
+    </div>
+    <button class="splash-btn" id="btn-launch">Initialize Engine</button>
+  </div>
+</div>
+
+<!-- UI -->
+<div id="ui">
+  <div id="panel-left">
+    <div class="panel-logo">STELLAR</div>
+    <div class="card">
+      <div class="card-title">Formation</div>
+      <div class="shape-grid" id="shape-grid">
+        <button class="shape-btn active" onclick="setShape('galaxy',this)"><span class="icon">◈</span>Galaxy</button>
+        <button class="shape-btn" onclick="setShape('nebula',this)"><span class="icon">◉</span>Nebula</button>
+        <button class="shape-btn" onclick="setShape('blackhole',this)"><span class="icon">◎</span>Black Hole</button>
+        <button class="shape-btn" onclick="setShape('saturn',this)"><span class="icon">⊙</span>Saturn</button>
+        <button class="shape-btn" onclick="setShape('starship',this)"><span class="icon">△</span>Starship</button>
+        <button class="shape-btn" onclick="setShape('spacecraft',this)"><span class="icon">◇</span>Spacecraft</button>
+        <button class="shape-btn" onclick="setShape('dna',this)"><span class="icon">∿</span>DNA Helix</button>
+        <button class="shape-btn" onclick="setShape('crystal',this)"><span class="icon">✦</span>Crystal</button>
+        <button class="shape-btn" onclick="setShape('torus',this)"><span class="icon">○</span>Torus</button>
+        <button class="shape-btn" onclick="setShape('supernova',this)"><span class="icon">✳</span>Supernova</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-right">
+    <div class="gesture-current">
+      <div class="gc-label">Active Gesture</div>
+      <div class="gc-value" id="gc-val">TRACKING...</div>
+      <div class="gc-desc" id="gc-desc">Awaiting hand input</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Gesture Map</div>
+      <div class="gesture-list">
+        <div class="g-row"><span class="g-icon">✊</span><div class="g-info"><div class="g-name">FIST</div><div class="g-fx">implode</div></div></div>
+        <div class="g-row"><span class="g-icon">🤏</span><div class="g-info"><div class="g-name">PINCH</div><div class="g-fx">attract</div></div></div>
+        <div class="g-row"><span class="g-icon">☝</span><div class="g-info"><div class="g-name">1 FINGER</div><div class="g-fx">laser beam</div></div></div>
+        <div class="g-row"><span class="g-icon">✌</span><div class="g-info"><div class="g-name">2 FINGERS</div><div class="g-fx">scissor split</div></div></div>
+        <div class="g-row"><span class="g-icon">🖐</span><div class="g-info"><div class="g-name">OPEN</div><div class="g-fx">repel burst</div></div></div>
+        <div class="g-row"><span class="g-icon">👌</span><div class="g-info"><div class="g-name">OK SIGN</div><div class="g-fx">vortex spin</div></div></div>
+        <div class="g-row"><span class="g-icon">⏸</span><div class="g-info"><div class="g-name">HOLD</div><div class="g-fx">freeze field</div></div></div>
+        <div class="g-row"><span class="g-icon">⚡</span><div class="g-info"><div class="g-name">SLASH</div><div class="g-fx">shockwave cut</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="bottom-bar">
+    <div class="stat"><div class="stat-val" id="s-particles">150,000</div><div class="stat-lbl">Particles</div></div>
+    <div class="stat"><div class="stat-val" id="s-shape">GALAXY</div><div class="stat-lbl">Formation</div></div>
+    <div class="stat"><div class="stat-val" id="fps-counter">60</div><div class="stat-lbl">FPS</div></div>
+    <div class="stat"><div class="stat-val" id="s-gesture">—</div><div class="stat-lbl">Gesture</div></div>
+  </div>
+
+  <div id="cam-wrap">
+    <div class="camera-box" style="width:160px;height:118px;border-radius:5px;overflow:hidden;border:1px solid rgba(79,156,249,0.25);background:#050810;transform:scaleX(-1);position:relative;">
+      <video id="input-video" playsinline style="display:none;"></video>
+      <canvas id="skeleton-canvas" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+    </div>
+    <div class="cam-label" style="font-family:'JetBrains Mono',monospace;font-size:0.52rem;letter-spacing:0.2em;color:rgba(232,234,240,0.18);text-align:right;margin-top:5px;text-transform:uppercase;">LIVE FEED</div>
+  </div>
+</div>
+
+<!-- HOLD RING -->
+<div id="hold-ring">
+  <svg width="72" height="72" viewBox="0 0 72 72">
+    <circle cx="36" cy="36" r="30" fill="none" stroke="rgba(79,156,249,0.1)" stroke-width="2"/>
+    <circle class="hold-arc" cx="36" cy="36" r="30" transform="rotate(-90 36 36)"/>
+  </svg>
+</div>
+
+<!-- SLASH CANVAS -->
+<canvas id="slash-canvas"></canvas>
+
+<script>
+// Hand connections for skeleton drawing
+const HAND_CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [0,9],[9,10],[10,11],[11,12],
+  [0,13],[13,14],[14,15],[15,16],
+  [0,17],[17,18],[18,19],[19,20]
+];
+
+// ════════════════════════════════════════════════════════
+//  CONFIG
+// ════════════════════════════════════════════════════════
+const COUNT = 150000;
+const DAMPING = 0.935;
+const SPRING = 0.007;
+
+// ════════════════════════════════════════════════════════
+//  GLOBALS
+// ════════════════════════════════════════════════════════
+let scene, camera, renderer, points, clock;
+let posArr, velArr, targetArr, colorArr;
+let handX = 0, handY = 0, handZ = 0;
+let prevHandX = 0, prevHandY = 0;
+let isHandActive = false;
+let currentGesture = 'none';
+let currentShape = 'galaxy';
+let holdTimer = 0, isHeld = false, holdProgress = 0;
+let slashPoints = [];
+let slashActive = false;
+let frameCount = 0, lastFPSTime = 0, fps = 60;
+let orbitPhase = 0;
+
+const GESTURE_INFO = {
+  fist:   ['FIST',     'implode — collapse field'],
+  pinch:  ['PINCH',    'attract — draw particles'],
+  one:    ['1 FINGER', 'laser — pierce beam'],
+  two:    ['2 FINGERS','scissor — split field'],
+  open:   ['OPEN HAND','repel — burst outward'],
+  ok:     ['OK SIGN',  'vortex — orbital spin'],
+  hold:   ['HOLD',     'freeze — suspend field'],
+  slash:  ['SLASH',    'shockwave — cut through'],
+  none:   ['—',        'awaiting hand input'],
+};
+
+// ════════════════════════════════════════════════════════
+//  SHAPE GENERATORS
+// ════════════════════════════════════════════════════════
+function buildShape(type) {
+  const P = new Float32Array(COUNT * 3);
+  const C = new Float32Array(COUNT * 3);
+  const rnd = Math.random;
+
+  for (let i = 0; i < COUNT; i++) {
+    let x=0,y=0,z=0, r=1,g=1,b=1;
+    const i3 = i*3;
+
+    switch(type) {
+
+      case 'galaxy': {
+        const arms = 4, d = Math.pow(rnd(), 0.5) * 30;
+        const arm = Math.floor(rnd()*arms);
+        const base = (arm/arms)*Math.PI*2;
+        const twist = d * 0.32 + (rnd()-0.5)*0.15;
+        const spr = Math.max(0.1, (1-d/30)) * 2.5;
+        x = d*Math.cos(base+twist) + (rnd()-0.5)*spr;
+        y = (rnd()-0.5)*(30-d)*0.12;
+        z = d*Math.sin(base+twist) + (rnd()-0.5)*spr;
+        const t = d/30;
+        if (d < 2) { r=1;g=0.98;b=0.95; } // core white
+        else if (rnd()<0.03) { r=1;g=1;b=1; } // bright stars
+        else { r=0.3+t*0.5; g=0.5+t*0.2; b=1-t*0.6; }
+        break;
+      }
+
+      case 'nebula': {
+        // 5 cloud lobes with filaments
+        const lobe = Math.floor(rnd()*5);
+        const lx=[0,14,-12,10,-8][lobe], ly=[0,6,-5,-8,9][lobe];
+        const nr = Math.pow(rnd(),0.5)*13, na = rnd()*Math.PI*2;
+        x = lx + nr*Math.cos(na) + (rnd()-0.5)*5;
+        y = ly + (rnd()-0.5)*6;
+        z = (rnd()-0.5)*12;
+        const h = lobe/5;
+        r = 0.4+Math.sin(h*Math.PI*2)*0.5;
+        g = 0.2+Math.cos(h*Math.PI*2+1.5)*0.4;
+        b = 0.7+Math.sin(h*Math.PI+0.5)*0.3;
+        // dim opacity variation via brightness
+        const dim = 0.5+rnd()*0.5;
+        r*=dim; g*=dim; b*=dim;
+        break;
+      }
+
+      case 'blackhole': {
+        // Accretion disc + jets + event horizon
+        const part = rnd();
+        if (part < 0.55) {
+          // Accretion disc — flat spiral
+          const dr = 5 + rnd()*20, da = rnd()*Math.PI*2;
+          x = dr*Math.cos(da); z = dr*Math.sin(da);
+          y = (rnd()-0.5)*0.8*(1-dr/25);
+          const heat = 1-dr/25;
+          r=1; g=heat*0.6; b=heat*0.1;
+        } else if (part < 0.7) {
+          // Polar jets
+          const jet = rnd()>0.5?1:-1;
+          const jt = rnd()*20;
+          x = (rnd()-0.5)*jt*0.12; y = jet*(8+jt); z = (rnd()-0.5)*jt*0.12;
+          r=0.4; g=0.7; b=1;
+        } else if (part < 0.82) {
+          // Lensing ring
+          const lr = 4+rnd()*0.8, la = rnd()*Math.PI*2;
+          x=lr*Math.cos(la); y=(rnd()-0.5)*0.3; z=lr*Math.sin(la);
+          r=1;g=0.95;b=0.8;
+        } else {
+          // Background scatter
+          const bs = 25+rnd()*5, ba = rnd()*Math.PI*2, bt = rnd()*Math.PI;
+          x=bs*Math.sin(bt)*Math.cos(ba); y=bs*Math.sin(bt)*Math.sin(ba); z=bs*Math.cos(bt);
+          r=g=b=rnd()*0.4;
+        }
+        break;
+      }
+
+      case 'saturn': {
+        const part = rnd();
+        if (part < 0.38) {
+          // Planet body with banding
+          const ph = rnd()*Math.PI*2, th = Math.acos(2*rnd()-1);
+          const rad = 8 + rnd()*0.5;
+          x=rad*Math.sin(th)*Math.cos(ph); y=rad*Math.sin(th)*Math.sin(ph); z=rad*Math.cos(th);
+          const band = Math.floor(Math.abs(y)/2)%2;
+          r=band?1:0.9; g=band?0.85:0.78; b=band?0.5:0.45;
+        } else if (part < 0.85) {
+          // Multi-band rings
+          const band = Math.floor(rnd()*6);
+          const rMin=10+band*2.8, rMax=rMin+2.2;
+          const rad=rMin+rnd()*(rMax-rMin), a=rnd()*Math.PI*2;
+          x=rad*Math.cos(a); y=(rnd()-0.5)*0.6; z=rad*Math.sin(a);
+          const density=rnd();
+          r=0.92-band*0.03; g=0.82-band*0.02; b=0.5+band*0.04;
+          r*=density; g*=density; b*=density;
+        } else {
+          // Moon
+          const ma=rnd()*Math.PI*2, mr=26+rnd()*2;
+          x=mr*Math.cos(ma); y=(rnd()-0.5)*2; z=mr*Math.sin(ma);
+          r=g=b=0.6+rnd()*0.3;
+        }
+        break;
+      }
+
+      case 'starship': {
+        const part = rnd();
+        if (part < 0.25) {
+          // Main cylinder
+          const h=(rnd()-0.5)*26, a=rnd()*Math.PI*2;
+          const rad=3.8+rnd()*0.3;
+          x=Math.cos(a)*rad; y=h; z=Math.sin(a)*rad;
+          r=0.65;g=0.68;b=0.72;
+        } else if (part < 0.44) {
+          // Nose cone
+          const nh=rnd()*9, nr=3.8*(1-nh/9)*Math.sqrt(1-(nh/9)*(nh/9)*0.3);
+          const na=rnd()*Math.PI*2;
+          x=Math.cos(na)*nr; y=13+nh; z=Math.sin(na)*nr;
+          r=0.75;g=0.78;b=0.82;
+        } else if (part < 0.56) {
+          // Grid fins (4 fins)
+          const fi=Math.floor(rnd()*4), fa=(fi/4)*Math.PI*2;
+          x=(4.2+rnd()*2)*Math.cos(fa); y=5+(rnd()-0.5)*4; z=(4.2+rnd()*2)*Math.sin(fa);
+          r=0.45;g=0.47;b=0.52;
+        } else if (part < 0.68) {
+          // Flaps / control surfaces
+          const fl=Math.floor(rnd()*3), fa2=(fl/3)*Math.PI*2;
+          x=(4+rnd()*1.5)*Math.cos(fa2); y=-7+(rnd()-0.5)*5; z=(4+rnd()*1.5)*Math.sin(fa2);
+          r=0.55;g=0.57;b=0.62;
+        } else if (part < 0.82) {
+          // Raptor engines (7)
+          const ei=Math.floor(rnd()*7), ea=ei===6?0:(ei/6)*Math.PI*2;
+          const er=ei===6?0:2.6+rnd()*0.4;
+          x=Math.cos(ea)*er; y=-13+(rnd()-0.5)*1.5; z=Math.sin(ea)*er;
+          r=0.55;g=0.52;b=0.48;
+        } else {
+          // Engine plume + heat shimmer
+          x=(rnd()-0.5)*9; y=-14-rnd()*9; z=(rnd()-0.5)*9;
+          const fd=rnd();
+          r=1; g=0.55*fd; b=0.08*fd;
+        }
+        break;
+      }
+
+      case 'spacecraft': {
+        // Advanced deep-space explorer
+        const part = rnd();
+        if (part < 0.28) {
+          // Main hull — elongated cylinder
+          const h=(rnd()-0.5)*20, a=rnd()*Math.PI*2;
+          x=Math.cos(a)*2.5; y=h; z=Math.sin(a)*2.5;
+          r=0.5;g=0.6;b=0.75;
+        } else if (part < 0.44) {
+          // Solar panels (2 large wings)
+          const wing=rnd()>0.5?1:-1, wu=rnd(), wv=rnd();
+          x=wing*(4+wu*10); y=(wv-0.5)*8; z=(rnd()-0.5)*0.3;
+          r=0.15;g=0.4;b=0.85;
+        } else if (part < 0.56) {
+          // Dish antenna
+          const da=rnd()*Math.PI*2, dr=rnd()*5;
+          x=Math.cos(da)*dr; y=12+Math.sin(da)*dr*0.4; z=Math.sin(da)*dr;
+          r=0.8;g=0.85;b=0.9;
+        } else if (part < 0.66) {
+          // Thruster pods (4)
+          const ti=Math.floor(rnd()*4), ta=(ti/4)*Math.PI*2;
+          x=Math.cos(ta)*4; y=-9+(rnd()-0.5)*2; z=Math.sin(ta)*4;
+          r=0.4;g=0.5;b=0.6;
+        } else if (part < 0.76) {
+          // Engine glow
+          const tg=Math.floor(rnd()*4), tga=(tg/4)*Math.PI*2;
+          x=Math.cos(tga)*4; y=-10-rnd()*3; z=Math.sin(tga)*4;
+          r=0.2;g=0.8;b=1;
+        } else if (part < 0.84) {
+          // Communication array
+          x=(rnd()-0.5)*3; y=10+(rnd()-0.5)*3; z=3+rnd()*2;
+          r=0.7;g=0.8;b=0.9;
+        } else {
+          // Radiator panels
+          const ri=rnd()>0.5?1:-1;
+          x=ri*(2.5+rnd()*0.5); y=(rnd()-0.5)*16; z=2.5+rnd()*2;
+          r=0.6;g=0.3;b=0.2;
+        }
+        break;
+      }
+
+      case 'dna': {
+        // Double helix with base pairs
+        const height = (rnd()-0.5)*42;
+        const twist = height * 0.28;
+        const strand = rnd() > 0.5 ? 1 : -1;
+        // Add slight noise
+        x = strand*6.5*Math.cos(twist) + (rnd()-0.5)*0.4;
+        y = height + (rnd()-0.5)*0.3;
+        z = strand*6.5*Math.sin(twist) + (rnd()-0.5)*0.4;
+        if (strand > 0) { r=0.15;g=0.6;b=1; } else { r=1;g=0.3;b=0.4; }
+        // Base pair rungs
+        if (rnd() < 0.12) {
+          const rh = Math.round(height/4)*4;
+          const rt2 = rh*0.28, ru = rnd();
+          x = (ru*2-1)*6.5*Math.cos(rt2);
+          y = rh; z = (ru*2-1)*6.5*Math.sin(rt2);
+          r=0.9;g=0.9;b=0.3;
+        }
+        break;
+      }
+
+      case 'crystal': {
+        // Geometric crystal cluster — multiple faceted forms
+        const seg = Math.floor(rnd()*5);
+        const cx=[0,8,-7,5,-4][seg], cy=[0,3,-4,-6,8][seg], cz=[0,2,-3,5,-2][seg];
+        const faces = 6, ht = 12 + seg*3;
+        const fa = rnd()*Math.PI*2, fy = (rnd()-0.5)*ht;
+        const fr = (ht/2-Math.abs(fy))/(ht/2)*4;
+        x=cx+fr*Math.cos(fa); y=cy+fy; z=cz+fr*Math.sin(fa);
+        const hue = seg/5;
+        r=0.6+Math.sin(hue*Math.PI*2)*0.4;
+        g=0.3+Math.cos(hue*Math.PI*2+2)*0.4;
+        b=0.8+Math.sin(hue*Math.PI)*0.2;
+        break;
+      }
+
+      case 'torus': {
+        // Torus knot
+        const kp=3, kq=2;
+        const t2 = rnd()*Math.PI*2*kp;
+        const r2 = Math.cos(kq*t2/kp)*10+18;
+        x = r2*Math.cos(t2/kp)+(rnd()-0.5)*1.2;
+        y = r2*Math.sin(t2/kp)+(rnd()-0.5)*1.2;
+        z = -Math.sin(kq*t2/kp)*10+(rnd()-0.5)*1.2;
+        const prog=t2/(Math.PI*2*kp);
+        r=0.3+prog*0.7; g=0.8-prog*0.5; b=1-prog*0.3;
+        // Scale down
+        x*=0.7; y*=0.7; z*=0.7;
+        break;
+      }
+
+      case 'supernova': {
+        // Expanding shell + filaments + remnant core
+        const part=rnd();
+        if (part < 0.6) {
+          // Expanding shell
+          const sp=rnd()*Math.PI*2, st=Math.acos(2*rnd()-1);
+          const sr=16+Math.sin(sp*8)*2+rnd()*3;
+          x=sr*Math.sin(st)*Math.cos(sp); y=sr*Math.sin(st)*Math.sin(sp); z=sr*Math.cos(st);
+          const ht2=sp/(Math.PI*2);
+          r=1; g=0.3+ht2*0.5; b=0.05+ht2*0.3;
+        } else if (part < 0.8) {
+          // Filaments
+          const fa=rnd()*Math.PI*2, fd=rnd()*20;
+          x=fd*Math.cos(fa)+(rnd()-0.5)*3; y=(rnd()-0.5)*5; z=fd*Math.sin(fa)+(rnd()-0.5)*3;
+          r=0.8;g=0.5;b=0.1;
+        } else {
+          // Core remnant
+          const cr=rnd()*3, ca=rnd()*Math.PI*2, ct=Math.acos(2*rnd()-1);
+          x=cr*Math.sin(ct)*Math.cos(ca); y=cr*Math.sin(ct)*Math.sin(ca); z=cr*Math.cos(ct);
+          r=0.9;g=0.95;b=1;
+        }
+        break;
+      }
+    }
+    P[i3]=x; P[i3+1]=y; P[i3+2]=z;
+    C[i3]=r; C[i3+1]=g; C[i3+2]=b;
+  }
+  return {P,C};
+}
+
+// ════════════════════════════════════════════════════════
+//  THREE.JS INIT
+// ════════════════════════════════════════════════════════
+function init3D() {
+  scene = new THREE.Scene();
+  clock = new THREE.Clock();
+
+  camera = new THREE.PerspectiveCamera(65, innerWidth/innerHeight, 0.01, 2000);
+  camera.position.set(0, 0, 58);
+
+  renderer = new THREE.WebGLRenderer({antialias:true, alpha:false, powerPreference:'high-performance'});
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setClearColor(0x01020a);
+  document.body.prepend(renderer.domElement);
+
+  const d = buildShape('galaxy');
+  targetArr = d.P; colorArr = d.C;
+  posArr = new Float32Array(COUNT*3);
+  velArr = new Float32Array(COUNT*3);
+
+  for (let i=0;i<COUNT*3;i++) posArr[i] = targetArr[i] + (Math.random()-0.5)*180;
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+  geo.setAttribute('color',    new THREE.BufferAttribute(colorArr, 3));
+
+  points = new THREE.Points(geo, new THREE.PointsMaterial({
+    size: 0.10, vertexColors: true,
+    transparent: true, opacity: 0.9,
+    blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+  }));
+  scene.add(points);
+
+  window.addEventListener('resize', () => {
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+    slashCvs.width=innerWidth; slashCvs.height=innerHeight;
+  });
+
+  window.addEventListener('pointermove', e => {
+    if (!isHandActive) {
+      handX=(e.clientX/innerWidth-0.5)*85;
+      handY=(0.5-e.clientY/innerHeight)*65;
+      if (e.buttons===1) setGesture('pinch');
+      else setGesture('open');
+    }
+    if (slashActive) {
+      slashPoints.push({x:e.clientX, y:e.clientY, t:Date.now()});
+      detectSlash();
+    }
+  });
+  window.addEventListener('pointerdown', e=>{ if(!isHandActive){ slashActive=true; slashPoints=[{x:e.clientX,y:e.clientY,t:Date.now()}]; }});
+  window.addEventListener('pointerup',   e=>{ if(!isHandActive){ slashActive=false; slashPoints=[]; }});
+}
+
+// ════════════════════════════════════════════════════════
+//  SLASH TRAIL
+// ════════════════════════════════════════════════════════
+const slashCvs = document.getElementById('slash-canvas');
+const slashCtx = slashCvs.getContext('2d');
+slashCvs.width = innerWidth; slashCvs.height = innerHeight;
+
+function drawSlash() {
+  slashCtx.clearRect(0,0,slashCvs.width,slashCvs.height);
+  const now = Date.now();
+  // Fade old points
+  slashPoints = slashPoints.filter(p => now-p.t < 400);
+  if (slashPoints.length < 2) return;
+  for (let i=1;i<slashPoints.length;i++) {
+    const alpha = 1 - (now-slashPoints[i].t)/400;
+    const width = alpha*3;
+    slashCtx.beginPath();
+    slashCtx.moveTo(slashPoints[i-1].x, slashPoints[i-1].y);
+    slashCtx.lineTo(slashPoints[i].x, slashPoints[i].y);
+    slashCtx.strokeStyle = `rgba(79,156,249,${alpha*0.9})`;
+    slashCtx.lineWidth = width;
+    slashCtx.lineCap = 'round';
+    slashCtx.shadowColor = '#4f9cf9';
+    slashCtx.shadowBlur = 12 * alpha;
+    slashCtx.stroke();
+  }
+}
+
+function detectSlash() {
+  if (slashPoints.length < 8) return;
+  const recent = slashPoints.slice(-8);
+  const dx = recent[recent.length-1].x - recent[0].x;
+  const dy = recent[recent.length-1].y - recent[0].y;
+  const spd = Math.sqrt(dx*dx+dy*dy);
+  if (spd > 180) {
+    setGesture('slash');
+    triggerSlashShockwave(recent);
+  }
+}
+
+function triggerSlashShockwave(pts) {
+  const mx = pts.reduce((a,p)=>a+p.x,0)/pts.length/innerWidth;
+  const my = pts.reduce((a,p)=>a+p.y,0)/pts.length/innerHeight;
+  const wx = (mx-0.5)*85, wy = (0.5-my)*65;
+  const dx = pts[pts.length-1].x-pts[0].x, dy = pts[pts.length-1].y-pts[0].y;
+  const len = Math.sqrt(dx*dx+dy*dy), nx=-dy/len, ny=dx/len;
+  const P = posArr;
+  for (let i=0;i<COUNT;i++) {
+    const i3=i*3;
+    const pdx=P[i3]-wx, pdy=P[i3+1]-wy;
+    const dist=Math.sqrt(pdx*pdx+pdy*pdy);
+    if (dist<25) {
+      const wave = (1-dist/25)*0.5;
+      velArr[i3]   += nx*wave + (Math.random()-0.5)*0.4;
+      velArr[i3+1] += ny*wave + (Math.random()-0.5)*0.4;
+      velArr[i3+2] += (Math.random()-0.5)*0.3;
+    }
+  }
+  setTimeout(()=>{ if(currentGesture==='slash') setGesture('open'); },300);
+}
+
+// ════════════════════════════════════════════════════════
+//  HOLD INDICATOR
+// ════════════════════════════════════════════════════════
+const holdRing = document.getElementById('hold-ring');
+const holdArc  = holdRing.querySelector('.hold-arc');
+const HOLD_MS  = 1200;
+
+function updateHoldRing() {
+  if (currentGesture==='fist' && !isHeld) {
+    holdTimer += 16;
+    holdProgress = Math.min(holdTimer/HOLD_MS, 1);
+    const dashLen = 188.4;
+    holdArc.style.strokeDashoffset = dashLen*(1-holdProgress);
+    holdRing.style.display='block';
+    holdRing.style.left=(handX/85*innerWidth/2+innerWidth/2-36)+'px';
+    holdRing.style.top=((0.5-handY/65)*innerHeight/2+innerHeight/2-36)+'px';
+    if (holdProgress>=1) { isHeld=true; setGesture('hold'); }
+  } else {
+    holdTimer=0; holdProgress=0;
+    holdArc.style.strokeDashoffset=188.4;
+    holdRing.style.display='none';
+    if (currentGesture!=='fist') isHeld=false;
+  }
+}
+
+// ════════════════════════════════════════════════════════
+//  PARTICLE PHYSICS
+// ════════════════════════════════════════════════════════
+function tick() {
+  requestAnimationFrame(tick);
+  orbitPhase += 0.018;
+
+  // FPS
+  frameCount++;
+  const now = performance.now();
+  if (now-lastFPSTime > 800) {
+    fps = Math.round(frameCount*1000/(now-lastFPSTime));
+    document.getElementById('fps-counter').textContent = fps;
+    frameCount=0; lastFPSTime=now;
+  }
+
+  const P = points.geometry.attributes.position.array;
+  const frozen = currentGesture==='hold' && isHeld;
+
+  for (let i=0; i<COUNT; i++) {
+    const i3=i*3;
+    const px=P[i3], py=P[i3+1], pz=P[i3+2];
+    const tx=targetArr[i3], ty=targetArr[i3+1], tz=targetArr[i3+2];
+
+    if (frozen) {
+      velArr[i3]*=0.95; velArr[i3+1]*=0.95; velArr[i3+2]*=0.95;
+      P[i3]+=velArr[i3]; P[i3+1]+=velArr[i3+1]; P[i3+2]+=velArr[i3+2];
+      continue;
+    }
+
+    velArr[i3]   += (tx-px)*SPRING;
+    velArr[i3+1] += (ty-py)*SPRING;
+    velArr[i3+2] += (tz-pz)*SPRING;
+
+    const dx=handX-px, dy=handY-py;
+    const dSq=dx*dx+dy*dy;
+    const R=50;
+
+    if (dSq < R*R) {
+      const dist=Math.sqrt(dSq)||0.001;
+      const norm=1/dist;
+      switch(currentGesture) {
+        case 'open': {
+          const f=(1-dist/R)*0.07;
+          velArr[i3]  -=dx*norm*f*dist*0.13;
+          velArr[i3+1]-=dy*norm*f*dist*0.13;
+          velArr[i3+2]+=(Math.random()-0.5)*f*2;
+          break;
+        }
+        case 'pinch': {
+          const f=(1-dist/R)*0.055;
+          velArr[i3]  +=dx*norm*f*dist*0.1;
+          velArr[i3+1]+=dy*norm*f*dist*0.1;
+          break;
+        }
+        case 'fist': {
+          velArr[i3]  +=dx*0.1;
+          velArr[i3+1]+=dy*0.1;
+          break;
+        }
+        case 'one': {
+          if (Math.abs(dy) < 3.5) {
+            velArr[i3]  +=(dx>0?1:-1)*0.6;
+            velArr[i3+1]+=(Math.random()-0.5)*0.25;
+            velArr[i3+2]+=(Math.random()-0.5)*0.25;
+          }
+          break;
+        }
+        case 'two': {
+          const side=px<handX?-1:1;
+          const f2=(1-dist/R)*0.1;
+          velArr[i3]  +=side*f2*8;
+          velArr[i3+1]+=(Math.random()-0.5)*f2*2;
+          break;
+        }
+        case 'ok': {
+          const angle=Math.atan2(dy,dx)+orbitPhase*0.04;
+          const ox=handX+dist*Math.cos(angle), oy=handY+dist*Math.sin(angle);
+          velArr[i3]  +=(ox-px)*0.028;
+          velArr[i3+1]+=(oy-py)*0.028;
+          velArr[i3]  +=(-dy*norm)*0.05;
+          velArr[i3+1]+=(dx*norm)*0.05;
+          break;
+        }
+      }
+    }
+
+    velArr[i3]  *=DAMPING;
+    velArr[i3+1]*=DAMPING;
+    velArr[i3+2]*=DAMPING;
+    P[i3]  +=velArr[i3];
+    P[i3+1]+=velArr[i3+1];
+    P[i3+2]+=velArr[i3+2];
+  }
+
+  updateHoldRing();
+  drawSlash();
+  points.geometry.attributes.position.needsUpdate=true;
+  points.rotation.y += 0.0007;
+  renderer.render(scene, camera);
+  prevHandX=handX; prevHandY=handY;
+}
+
+// ════════════════════════════════════════════════════════
+//  GESTURE
+// ════════════════════════════════════════════════════════
+function setGesture(g) {
+  currentGesture=g;
+  const info=GESTURE_INFO[g]||['—',''];
+  document.getElementById('gc-val').textContent=info[0];
+  document.getElementById('gc-desc').textContent=info[1];
+  document.getElementById('s-gesture').textContent=info[0];
+}
+
+function detectGesture(lm) {
+  const up=[
+    lm[4].x<lm[3].x,
+    lm[8].y<lm[6].y,
+    lm[12].y<lm[10].y,
+    lm[16].y<lm[14].y,
+    lm[20].y<lm[18].y,
+  ];
+  const cnt=up.filter(Boolean).length;
+  const dPinch=Math.hypot(lm[4].x-lm[8].x,lm[4].y-lm[8].y);
+  const dOk=dPinch;
+  if (dOk<0.055 && up[2]&&up[3]&&up[4]) return 'ok';
+  if (dPinch<0.045) return 'pinch';
+  if (cnt===0) return 'fist';
+  if (cnt===1&&up[1]) return 'one';
+  if (cnt===2&&up[1]&&up[2]) return 'two';
+  if (cnt>=4) return 'open';
+  return 'open';
+}
+
+// ════════════════════════════════════════════════════════
+//  SHAPE SWITCH
+// ════════════════════════════════════════════════════════
+function setShape(name, btn) {
+  currentShape=name;
+  const d=buildShape(name);
+  targetArr=d.P;
+  const ca=points.geometry.attributes.color;
+  for(let i=0;i<COUNT*3;i++) colorArr[i]=d.C[i];
+  ca.needsUpdate=true;
+  document.querySelectorAll('.shape-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('s-shape').textContent=name.toUpperCase();
+}
+
+// ════════════════════════════════════════════════════════
+//  MEDIAPIPE
+// ════════════════════════════════════════════════════════
+async function initAI() {
+  const video=document.getElementById('input-video');
+  const canvas=document.getElementById('skeleton-canvas');
+  const ctx=canvas.getContext('2d');
+  const stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480,facingMode:'user'}});
+  video.srcObject=stream; await video.play();
+
+  const hands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+  hands.setOptions({maxNumHands:1,modelComplexity:1,minDetectionConfidence:0.7,minTrackingConfidence:0.7});
+
+  hands.onResults(results=>{
+    canvas.width=video.videoWidth||640;
+    canvas.height=video.videoHeight||480;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if (results.multiHandLandmarks?.length>0) {
+      isHandActive=true;
+      const lm=results.multiHandLandmarks[0];
+      // Draw sleek skeleton
+      ctx.strokeStyle='rgba(79,156,249,0.6)';
+      ctx.lineWidth=1.5;
+      HAND_CONNECTIONS.forEach(([a,b])=>{
+        ctx.beginPath();
+        ctx.moveTo(lm[a].x*canvas.width,lm[a].y*canvas.height);
+        ctx.lineTo(lm[b].x*canvas.width,lm[b].y*canvas.height);
+        ctx.stroke();
+      });
+      lm.forEach(pt=>{
+        ctx.beginPath();
+        ctx.arc(pt.x*canvas.width,pt.y*canvas.height,2.5,0,Math.PI*2);
+        ctx.fillStyle='rgba(167,139,250,0.9)'; ctx.fill();
+      });
+      handX=(0.5-lm[9].x)*110; handY=(0.5-lm[9].y)*85;
+      const g=detectGesture(lm);
+      setGesture(g);
+    } else {
+      isHandActive=false;
+      document.getElementById('gc-val').textContent='SEARCHING...';
+      document.getElementById('gc-desc').textContent='Position hand in view';
+    }
+  });
+
+  const cam=new Camera(video,{onFrame:async()=>await hands.send({image:video})});
+  await cam.start();
+}
+
+// ════════════════════════════════════════════════════════
+//  LAUNCH
+// ════════════════════════════════════════════════════════
+document.getElementById('btn-launch').addEventListener('click', async()=>{
+  const splash=document.getElementById('splash');
+  splash.classList.add('fade-out');
+  setTimeout(()=>splash.style.display='none',600);
+  document.getElementById('ui').style.display='block';
+  init3D();
+  tick();
+  try { await initAI(); }
+  catch(e){ console.warn('Camera unavailable, using mouse fallback.'); }
+});
+</script>
+</body>
+</html>
