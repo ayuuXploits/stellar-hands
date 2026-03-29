@@ -7,4 +7,4 @@ u can interact with contents with ur hand gestures
     one:     '☝️  1 FINGER — LASER',
     two:     '✌️  2 FINGERS — SPLIT',
     three:   '🤟 3 FINGERS — ORBIT',
-    ok:      '👌 OK — VORTEX',
+    ok:      '👌 OK — VORTEX'
