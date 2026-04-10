@@ -8,3 +8,4 @@ u can interact with contents with ur hand gestures
     two:     '✌️  2 FINGERS — SPLIT',
     three:   '🤟 3 FINGERS — ORBIT',
     ok:      '👌 OK — VORTEX'
+    
