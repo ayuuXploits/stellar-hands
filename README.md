@@ -1,11 +1,52 @@
-# stellar-hands
-basically a hand tracking algorithm
-u can interact with contents with ur hand gestures
-    open:  '🖐️  OPEN — REPEL',
-    pinch:   '🤏 PINCH — ATTRACT',
-    fist:    '✊  FIST — IMPLODE',
-    one:     '☝️  1 FINGER — LASER',
-    two:     '✌️  2 FINGERS — SPLIT',
-    three:   '🤟 3 FINGERS — ORBIT',
-    ok:      '👌 OK — VORTEX'
+_____ _____ ______ _      _      ____  _____     _    _          _   _ _____   _____ 
+ / ____|__  /|  ____| |    | |    / __ \|  __ \   | |  | |   /\   | \ | |  __ \ / ____|
+| (___   / / | |__  | |    | |   | |  | | |__) |  | |__| |  /  \  |  \| | |  | | (___  
+ \___ \ / /  |  __| | |    | |   | |  | |  _  /   |  __  | / /\ \ | . ` | |  | |\___ \ 
+ ____) / /__ | |____| |____| |___| |__| | | \ \   | |  | |/ ____ \| |\  | |__| |____) |
+|_____/_____|______|______|______\____/|_|  \_\  |_|  |_/_/    \_\_| \_|_____/|_____/
+
+
+.   *    .       *    .        *    .    *
+    *       .        *      .       *         .
+       ✋ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ > * . ° ✨
+    .       *    .       *    .        *    .
+        *      .     *      .      *      .     *
     
+🌌 About
+Stellar Hands is a real-time hand gesture interaction engine that turns your bare hand into a cosmic controller. Using computer vision and hand tracking, it maps your gestures to stunning particle and physics effects — no mouse, no keyboard, just your hands and the universe.
+Point, pinch, clench, split — every gesture commands a different force of nature.
+
+🖐️ Gesture Controls
+GestureCommandEffect🖐️ Open HandREPELPushes particles away from your palm🤏 PinchATTRACTPulls particles toward your fingertips✊ FistIMPLODECollapses everything into a singularity☝️ 1 FingerLASERFires a precision laser beam✌️ 2 FingersSPLITTears the particle field apart🤟 3 FingersORBITSets particles spinning in orbital paths👌 OK SignVORTEXSpawns a swirling vortex of chaos
+
+
+
+⚡ Features
+
+Real-time hand landmark detection and gesture classification
+Physics-based particle system reacting to every gesture
+Zero hardware required — just a webcam
+Smooth, low-latency tracking for fluid interaction
+Easily extensible — add your own gestures and effects
+
+
+
+🚀 Getting Started
+bashgit clone https://github.com/ayuuXploits/stellar-hands
+cd stellar-hands
+pip install -r requirements.txt
+python main.py
+
+Point your webcam at your hand and start bending the cosmos. 🌠
+
+🛠️ Built With
+
+Python
+MediaPipe — hand landmark detection
+OpenCV — video capture and rendering
+NumPy — particle physics calculations
+
+
+"Your hands. Your rules. The universe obeys."
+
+ 🚀
