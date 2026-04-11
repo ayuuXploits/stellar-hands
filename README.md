@@ -42,9 +42,9 @@ Point your webcam at your hand and start bending the cosmos. 🌠
 🛠️ Built With
 
 Python
-MediaPipe — hand landmark detection
-OpenCV — video capture and rendering
-NumPy — particle physics calculations
+MediaPipe — hand landmark detection.
+OpenCV — video capture and rendering.
+NumPy — particle physics calculations.
 
 
 "Your hands. Your rules. The universe obeys."
