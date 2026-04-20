@@ -10,7 +10,7 @@
        ✋ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ > * . ° ✨
     .       *    .       *    .        *    .
         *      .     *      .      *      .     *
-    
+    .
 🌌 About
 Stellar Hands is a real-time hand gesture interaction engine that turns your bare hand into a cosmic controller. Using computer vision and hand tracking, it maps your gestures to stunning particle and physics effects — no mouse, no keyboard, just your hands and the universe.
 Point, pinch, clench, split — every gesture commands a different force of nature.
