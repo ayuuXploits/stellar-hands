@@ -7,178 +7,413 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <!-- NOTE: drawing_utils removed — we draw the skeleton manually to avoid HAND_CONNECTIONS dependency -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Inter', sans-serif; color: white; }
         canvas { display: block; }
-        .glass { background: rgba(10, 10, 10, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .glass { background: rgba(10,10,10,0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
         #camera-preview {
             position: absolute; bottom: 20px; right: 20px;
             width: 180px; height: 135px; border-radius: 12px;
             border: 2px solid #3b82f6; background: #111;
-            transform: scaleX(-1); overflow: hidden; z-index: 100;
+            /* FIX: mirror the canvas inside, not the container, so overflow clips correctly */
+            overflow: hidden; z-index: 100;
         }
-        #skeleton-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #skeleton-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            transform: scaleX(-1); /* mirror here instead of on the container */
+        }
         .ui-panel { position: absolute; top: 20px; left: 20px; z-index: 50; width: 260px; }
-        .btn-shape { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 10px; border-radius: 10px; font-size: 12px; cursor: pointer; transition: 0.2s; width: 100%; }
+        .btn-shape {
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+            padding: 10px; border-radius: 10px; font-size: 12px; cursor: pointer;
+            transition: 0.2s; width: 100%; color: white;
+        }
+        .btn-shape:hover { background: rgba(255,255,255,0.1); }
         .btn-shape.active { background: #2563eb; border-color: #60a5fa; }
     </style>
 </head>
 <body>
 
+<!-- SPLASH -->
 <div id="overlay-start" class="fixed inset-0 bg-black/95 flex flex-col items-center justify-center z-[2000]">
     <h1 class="text-4xl font-black italic mb-2">STELLAR HANDS</h1>
-    <p id="mac-status" class="text-blue-400 font-mono text-sm mb-8 italic">INITIALIZING SENSORS...</p>
+    <p id="mac-status" class="text-blue-400 font-mono text-sm mb-8 italic">READY TO INITIALIZE</p>
     <button id="btn-launch" class="bg-blue-600 hover:bg-blue-500 px-12 py-4 rounded-full font-bold text-xl transition-all hover:scale-105">
         START ENGINE
     </button>
+    <p class="text-xs text-white/30 mt-4 text-center max-w-xs">
+        Camera access required for hand tracking.<br>Allow permission when prompted.
+    </p>
 </div>
 
+<!-- MAIN UI -->
 <div class="ui-panel glass p-5 rounded-2xl hidden" id="main-ui">
     <div class="flex justify-between items-center mb-4">
         <h2 class="font-black italic text-xl">STELLAR</h2>
-        <div id="gesture-display" class="bg-blue-500/20 border border-blue-500/50 px-3 py-1 rounded-full text-[10px] font-bold text-blue-400">WAITING...</div>
+        <div id="gesture-display" class="bg-blue-500/20 border border-blue-500/50 px-3 py-1 rounded-full text-[10px] font-bold text-blue-400">
+            WAITING...
+        </div>
     </div>
-    <div class="grid grid-cols-2 gap-2 mb-6">
-        <button class="btn-shape active" onclick="setTemplate('galaxy', this)">Galaxy</button>
-        <button class="btn-shape" onclick="setTemplate('heart', this)">Heart</button>
-        <button class="btn-shape" onclick="setTemplate('flower', this)">Flower</button>
-        <button class="btn-shape" onclick="setTemplate('saturn', this)">Saturn</button>
+
+    <!-- FIX: removed inline onclick, using data-shape + delegated listener -->
+    <div class="grid grid-cols-2 gap-2 mb-4" id="shape-grid">
+        <button class="btn-shape active" data-shape="galaxy">🌀 Galaxy</button>
+        <button class="btn-shape"        data-shape="heart">❤️ Heart</button>
+        <button class="btn-shape"        data-shape="flower">🌸 Flower</button>
+        <button class="btn-shape"        data-shape="saturn">🪐 Saturn</button>
     </div>
-    <div class="text-[10px] opacity-50 text-center">Touch/Mouse active as fallback</div>
+
+    <!-- Gesture legend -->
+    <div class="text-[10px] opacity-40 mb-1">Gestures:</div>
+    <div class="text-[10px] opacity-50 leading-5">
+        🤏 Pinch → attract &nbsp; 🖐 Open → repel<br>
+        ✊ Fist → implode &nbsp; ☝ 1 Finger → laser
+    </div>
+    <div class="text-[10px] opacity-30 text-center mt-3">Mouse works as fallback</div>
 </div>
 
+<!-- CAMERA PREVIEW -->
 <div id="camera-preview">
     <video id="input-video" class="hidden" playsinline></video>
     <canvas id="skeleton-canvas"></canvas>
 </div>
 
 <script>
-    const COUNT = 45000;
-    let scene, camera, renderer, points, posArr, velArr, targetArr, colorArr;
-    let handX = 0, handY = 0, isHandActive = false, currentGesture = 'none';
+'use strict';
 
-    function getPositions(type) {
-        const p = new Float32Array(COUNT * 3), c = new Float32Array(COUNT * 3);
-        for (let i = 0; i < COUNT; i++) {
-            let x, y, z, r, g, b, i3 = i * 3;
-            if (type === 'heart') {
-                const t = Math.random() * Math.PI * 2;
-                x = 16 * Math.pow(Math.sin(t), 3); y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t); z = (Math.random()-0.5)*5;
-                const s = 0.5 + Math.random()*0.5; x *= s; y *= s; r = 1; g = 0.1; b = 0.3;
-            } else if (type === 'saturn') {
-                const ring = Math.random() > 0.4;
-                if (ring) { const rr = 13 + Math.random()*8, a = Math.random()*Math.PI*2; x = rr*Math.cos(a); y = (Math.random()-0.5)*2; z = rr*Math.sin(a); r = 0.9; g = 0.8; b = 0.6; }
-                else { const phi = Math.random()*Math.PI*2, th = Math.random()*Math.PI; x = 8*Math.sin(th)*Math.cos(phi); y = 8*Math.sin(th)*Math.sin(phi); z = 8*Math.cos(th); r = 1; g = 0.9; b = 0.4; }
-            } else { // Galaxy
-                const d = Math.random()*26, s = d*0.45; x = d*Math.cos(s + Math.random()*0.2); y = (Math.random()-0.5)*(26-d)*0.25; z = d*Math.sin(s + Math.random()*0.2); r = 0.2; g = 0.5; b = 1;
+// ── Hand skeleton connections (was missing — caused ReferenceError with drawConnectors) ──
+const HAND_CONNECTIONS = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [0,9],[9,10],[10,11],[11,12],
+    [0,13],[13,14],[14,15],[15,16],
+    [0,17],[17,18],[18,19],[19,20]
+];
+
+// ── Config ──
+const COUNT    = 45000;
+const DAMPING  = 0.93;
+const SPRING   = 0.006;
+const HAND_R   = 55;   // FIX: was 30, too small to cover the particle field
+const HAND_R2  = HAND_R * HAND_R;
+
+// ── State ──
+let scene, camera, renderer, points;
+let posArr, velArr, targetArr, colorArr;
+let handX = 0, handY = 0;
+let isHandActive = false;
+let currentGesture = 'open';
+
+// ── Shape generators ──
+function getPositions(type) {
+    const p = new Float32Array(COUNT * 3);
+    const c = new Float32Array(COUNT * 3);
+
+    for (let i = 0; i < COUNT; i++) {
+        let x = 0, y = 0, z = 0, r = 1, g = 1, b = 1;
+        const i3 = i * 3;
+
+        if (type === 'heart') {
+            const t = Math.random() * Math.PI * 2;
+            x = 16 * Math.pow(Math.sin(t), 3);
+            y = 13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t);
+            z = (Math.random() - 0.5) * 4;
+            const s = 0.5 + Math.random() * 0.5;
+            x *= s; y *= s;
+            r = 1; g = 0.1 + Math.random() * 0.2; b = 0.3;
+
+        } else if (type === 'saturn') {
+            const ring = Math.random() > 0.4;
+            if (ring) {
+                const rr = 13 + Math.random() * 8, a = Math.random() * Math.PI * 2;
+                x = rr * Math.cos(a); y = (Math.random() - 0.5) * 2; z = rr * Math.sin(a);
+                const density = Math.random();
+                r = 0.9 * density; g = 0.8 * density; b = 0.6 * density;
+            } else {
+                const phi = Math.random() * Math.PI * 2, th = Math.random() * Math.PI;
+                x = 8*Math.sin(th)*Math.cos(phi); y = 8*Math.sin(th)*Math.sin(phi); z = 8*Math.cos(th);
+                r = 1; g = 0.88; b = 0.42;
             }
-            p[i3] = x; p[i3+1] = y; p[i3+2] = z; c[i3] = r; c[i3+1] = g; c[i3+2] = b;
+
+        } else if (type === 'flower') {
+            // FIX: was missing — fell through to galaxy silently
+            const petals = 6;
+            const petal = Math.floor(Math.random() * petals);
+            const angle = (petal / petals) * Math.PI * 2;
+            const dist  = Math.pow(Math.random(), 0.5) * 14;
+            const spread = dist * 0.35;
+            x = dist * Math.cos(angle) + (Math.random() - 0.5) * spread;
+            y = dist * Math.sin(angle) + (Math.random() - 0.5) * spread;
+            z = (Math.random() - 0.5) * 3;
+            const hue = petal / petals;
+            r = 0.8 + Math.sin(hue * Math.PI * 2) * 0.2;
+            g = 0.3 + Math.cos(hue * Math.PI * 2) * 0.3;
+            b = 0.6 + Math.sin(hue * Math.PI) * 0.4;
+
+        } else { // galaxy (default)
+            const d = Math.random() * 28;
+            const s = d * 0.42;
+            x = d * Math.cos(s + (Math.random() - 0.5) * 0.25);
+            y = (Math.random() - 0.5) * (28 - d) * 0.22;
+            z = d * Math.sin(s + (Math.random() - 0.5) * 0.25);
+            const t = d / 28;
+            r = 0.2 + t * 0.4; g = 0.4 + t * 0.2; b = 1 - t * 0.5;
         }
-        return { p, c };
+
+        p[i3] = x; p[i3+1] = y; p[i3+2] = z;
+        c[i3] = r; c[i3+1] = g; c[i3+2] = b;
+    }
+    return { p, c };
+}
+
+// ── Three.js init ──
+function init() {
+    scene  = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 1000);
+    camera.position.z = 48;
+
+    renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setClearColor(0x000005);
+    document.body.appendChild(renderer.domElement);
+
+    const data = getPositions('galaxy');
+    targetArr = data.p;
+    colorArr  = data.c;  // FIX: keep a live reference so setTemplate writes to the same array
+    posArr    = new Float32Array(COUNT * 3);
+    velArr    = new Float32Array(COUNT * 3);
+
+    for (let i = 0; i < COUNT * 3; i++) {
+        posArr[i] = targetArr[i] + (Math.random() - 0.5) * 130;
     }
 
-    function init() {
-        scene = new THREE.Scene();
-        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 45;
-        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-        const data = getPositions('galaxy');
-        targetArr = data.p; posArr = new Float32Array(COUNT*3); velArr = new Float32Array(COUNT*3); colorArr = data.c;
-        for(let i=0; i<COUNT*3; i++) posArr[i] = targetArr[i] + (Math.random()-0.5)*150;
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
-        geo.setAttribute('color', new THREE.BufferAttribute(colorArr, 3));
-        points = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.18, vertexColors: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending }));
-        scene.add(points);
-        
-        // Mouse Fallback
-        window.addEventListener('pointermove', (e) => {
-            if (!isHandActive) {
-                handX = (e.clientX / window.innerWidth - 0.5) * 80;
-                handY = (0.5 - e.clientY / window.innerHeight) * 60;
-                currentGesture = e.buttons === 1 ? 'pinch' : 'open';
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    // FIX: pass colorArr directly so the same Float32Array is always used
+    geo.setAttribute('color', new THREE.BufferAttribute(colorArr, 3));
+
+    points = new THREE.Points(geo, new THREE.PointsMaterial({
+        size: 0.16, vertexColors: true,
+        transparent: true, opacity: 0.85,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    scene.add(points);
+
+    // Resize handler (was missing)
+    window.addEventListener('resize', () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+    });
+
+    // Mouse fallback
+    window.addEventListener('pointermove', e => {
+        if (isHandActive) return;
+        handX = (e.clientX / innerWidth - 0.5) * 80;
+        handY = (0.5 - e.clientY / innerHeight) * 62;
+        currentGesture = e.buttons === 1 ? 'pinch' : 'open';
+        updateGestureUI(currentGesture);
+    });
+
+    animate();
+}
+
+// ── Gesture detection ──
+function detectGesture(lm) {
+    const indexUp  = lm[8].y  < lm[6].y;
+    const middleUp = lm[12].y < lm[10].y;
+    const ringUp   = lm[16].y < lm[14].y;
+    const pinkyUp  = lm[20].y < lm[18].y;
+    const dPinch   = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
+
+    if (dPinch < 0.05) return 'pinch';
+    if (!indexUp && !middleUp && !ringUp && !pinkyUp) return 'fist';
+    if (indexUp && !middleUp && !ringUp) return 'one';
+    if (indexUp && middleUp && !ringUp) return 'two';
+    if (indexUp && middleUp && ringUp && pinkyUp) return 'open';
+    return 'open';
+}
+
+function updateGestureUI(g) {
+    const labels = { pinch:'PINCH', open:'OPEN', fist:'FIST', one:'LASER', two:'SCISSORS', none:'WAITING...' };
+    document.getElementById('gesture-display').textContent = labels[g] || g.toUpperCase();
+}
+
+// ── MediaPipe ──
+async function initAI() {
+    const video  = document.getElementById('input-video');
+    const canvas = document.getElementById('skeleton-canvas');
+    const ctx    = canvas.getContext('2d');
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, facingMode: 'user' }
+    });
+    video.srcObject = stream;
+    await video.play();
+
+    const hands = new Hands({
+        locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+    });
+    hands.setOptions({
+        maxNumHands: 1, modelComplexity: 1,
+        minDetectionConfidence: 0.65, minTrackingConfidence: 0.65,
+    });
+
+    hands.onResults(results => {
+        canvas.width  = video.videoWidth  || 640;
+        canvas.height = video.videoHeight || 480;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (results.multiHandLandmarks?.length > 0) {
+            isHandActive = true;
+            const lm = results.multiHandLandmarks[0];
+
+            // Draw skeleton manually (no HAND_CONNECTIONS dependency on drawing_utils)
+            ctx.strokeStyle = 'rgba(59,130,246,0.7)';
+            ctx.lineWidth   = 2;
+            HAND_CONNECTIONS.forEach(([a, b]) => {
+                ctx.beginPath();
+                ctx.moveTo(lm[a].x * canvas.width, lm[a].y * canvas.height);
+                ctx.lineTo(lm[b].x * canvas.width, lm[b].y * canvas.height);
+                ctx.stroke();
+            });
+            lm.forEach(pt => {
+                ctx.beginPath();
+                ctx.arc(pt.x * canvas.width, pt.y * canvas.height, 3, 0, Math.PI * 2);
+                ctx.fillStyle = '#60a5fa';
+                ctx.fill();
+            });
+
+            handX = (0.5 - lm[9].x) * 110;
+            handY = (0.5 - lm[9].y) * 85;
+
+            currentGesture = detectGesture(lm);
+            updateGestureUI(currentGesture);
+        } else {
+            isHandActive = false;
+            updateGestureUI('none');
+        }
+    });
+
+    const cam = new Camera(video, { onFrame: async () => hands.send({ image: video }) });
+    await cam.start();
+}
+
+// ── Physics loop ──
+function animate() {
+    requestAnimationFrame(animate);
+    const P = points.geometry.attributes.position.array;
+
+    for (let i = 0; i < COUNT; i++) {
+        const i3 = i * 3;
+        const px = P[i3], py = P[i3+1], pz = P[i3+2];
+
+        // Spring toward target
+        velArr[i3]   += (targetArr[i3]   - px) * SPRING;
+        velArr[i3+1] += (targetArr[i3+1] - py) * SPRING;
+        velArr[i3+2] += (targetArr[i3+2] - pz) * SPRING;
+
+        // Hand interaction — FIX: was radius 30, now HAND_R (55) covers the full field
+        const dx  = handX - px, dy = handY - py;
+        const dSq = dx * dx + dy * dy;
+
+        if (dSq < HAND_R2 && dSq > 0.001) {
+            const dist    = Math.sqrt(dSq);
+            const falloff = (1 - dist / HAND_R);
+
+            switch (currentGesture) {
+                case 'pinch': {
+                    // Attract
+                    velArr[i3]   += (dx / dist) * falloff * 0.55;
+                    velArr[i3+1] += (dy / dist) * falloff * 0.55;
+                    break;
+                }
+                case 'open': {
+                    // Repel
+                    velArr[i3]   -= (dx / dist) * falloff * 0.6;
+                    velArr[i3+1] -= (dy / dist) * falloff * 0.6;
+                    velArr[i3+2] += (Math.random() - 0.5) * falloff * 0.4;
+                    break;
+                }
+                case 'fist': {
+                    // Strong implosion toward hand
+                    velArr[i3]   += dx * 0.09;
+                    velArr[i3+1] += dy * 0.09;
+                    break;
+                }
+                case 'one': {
+                    // Laser: push particles along horizontal axis near hand
+                    if (Math.abs(dy) < 5) {
+                        velArr[i3]   += (dx > 0 ? 0.8 : -0.8);
+                        velArr[i3+1] += (Math.random() - 0.5) * 0.3;
+                    }
+                    break;
+                }
+                case 'two': {
+                    // Scissor split
+                    const side = px < handX ? -1 : 1;
+                    velArr[i3]   += side * falloff * 1.2;
+                    velArr[i3+1] += (Math.random() - 0.5) * falloff * 0.4;
+                    break;
+                }
             }
-        });
-        
-        animate();
-    }
-
-    async function initAI() {
-        const video = document.getElementById('input-video');
-        const canvas = document.getElementById('skeleton-canvas');
-        const ctx = canvas.getContext('2d');
-        
-        // MacOS Specific: Request specific media constraints
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-        video.srcObject = stream;
-        await video.play();
-
-        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
-        hands.onResults((results) => {
-            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            if (results.multiHandLandmarks?.length > 0) {
-                isHandActive = true;
-                const lm = results.multiHandLandmarks[0];
-                drawConnectors(ctx, lm, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 3});
-                handX = (0.5 - lm[9].x) * 110; handY = (0.5 - lm[9].y) * 85;
-                const dP = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
-                currentGesture = dP < 0.05 ? 'pinch' : 'open';
-                document.getElementById('gesture-display').innerText = currentGesture;
-            } else { isHandActive = false; document.getElementById('gesture-display').innerText = "SEARCHING..."; }
-        });
-
-        const cam = new Camera(video, { onFrame: async () => { await hands.send({image: video}); } });
-        return cam.start();
-    }
-
-    function animate() {
-        requestAnimationFrame(animate);
-        const p = points.geometry.attributes.position.array;
-        for (let i = 0; i < COUNT; i++) {
-            const i3 = i * 3;
-            velArr[i3] += (targetArr[i3] - p[i3]) * 0.005;
-            velArr[i3+1] += (targetArr[i3+1] - p[i3+1]) * 0.005;
-            velArr[i3+2] += (targetArr[i3+2] - p[i3+2]) * 0.005;
-            const dx = handX - p[i3], dy = handY - p[i3+1], dSq = dx*dx + dy*dy;
-            if (dSq < 900) {
-                const force = (1 - Math.sqrt(dSq) / 30);
-                if (currentGesture === 'pinch') { velArr[i3] += dx*force*0.045; velArr[i3+1] += dy*force*0.045; }
-                else { velArr[i3] -= dx*force*0.05; velArr[i3+1] -= dy*force*0.05; }
-            }
-            velArr[i3] *= 0.94; velArr[i3+1] *= 0.94; velArr[i3+2] *= 0.94;
-            p[i3] += velArr[i3]; p[i3+1] += velArr[i3+1]; p[i3+2] += velArr[i3+2];
         }
-        points.geometry.attributes.position.needsUpdate = true;
-        points.rotation.y += 0.001;
-        renderer.render(scene, camera);
+
+        velArr[i3]   *= DAMPING;
+        velArr[i3+1] *= DAMPING;
+        velArr[i3+2] *= DAMPING;
+        P[i3]   += velArr[i3];
+        P[i3+1] += velArr[i3+1];
+        P[i3+2] += velArr[i3+2];
     }
 
-    function setTemplate(n, b) {
-        const d = getPositions(n); targetArr = d.p;
-        const cAttr = points.geometry.attributes.color;
-        for(let i=0; i<COUNT*3; i++) colorArr[i] = d.c[i];
-        cAttr.needsUpdate = true;
-        document.querySelectorAll('.btn-shape').forEach(x => x.classList.remove('active'));
-        b.classList.add('active');
-    }
+    points.geometry.attributes.position.needsUpdate = true;
+    points.rotation.y += 0.0008;
+    renderer.render(scene, camera);
+}
 
-    document.getElementById('btn-launch').onclick = async () => {
-        try {
-            document.getElementById('overlay-start').style.display = 'none';
-            document.getElementById('main-ui').classList.remove('hidden');
-            init();
-            await initAI();
-        } catch (e) {
-            console.error(e);
-            alert("Mac Privacy Error: Please enable Camera in System Settings > Privacy & Security > Camera.");
-        }
-    };
+// ── Shape switching ──
+// FIX: colorArr was a local copy, colors never updated visually. Now we mutate in place.
+function setTemplate(shapeName) {
+    const data = getPositions(shapeName);
+    targetArr = data.p;
+    // Write new colors directly into the live colorArr buffer
+    for (let i = 0; i < COUNT * 3; i++) colorArr[i] = data.c[i];
+    points.geometry.attributes.color.needsUpdate = true;
+
+    document.querySelectorAll('.btn-shape').forEach(b => {
+        b.classList.toggle('active', b.dataset.shape === shapeName);
+    });
+}
+
+// Delegated click handler (no inline onclick needed)
+document.getElementById('shape-grid').addEventListener('click', e => {
+    const btn = e.target.closest('[data-shape]');
+    if (btn) setTemplate(btn.dataset.shape);
+});
+
+// ── Launch ──
+document.getElementById('btn-launch').addEventListener('click', async () => {
+    document.getElementById('mac-status').textContent = 'REQUESTING CAMERA…';
+    try {
+        document.getElementById('overlay-start').style.display = 'none';
+        document.getElementById('main-ui').classList.remove('hidden');
+        init();
+        await initAI();
+    } catch (e) {
+        console.error(e);
+        // Show splash again with error
+        document.getElementById('overlay-start').style.display = 'flex';
+        document.getElementById('mac-status').textContent =
+            'Camera blocked. Go to System Settings → Privacy → Camera and allow your browser.';
+        document.getElementById('mac-status').style.color = '#f87171';
+        // Engine still runs with mouse fallback
+        if (!renderer) { init(); }
+    }
+});
 </script>
 </body>
 </html>
