@@ -47,5 +47,5 @@ NumPy — particle physics calculations.
 
 
 "Your hands. Your rules. The universe obeys."
-
+ © 2026 ayuuXploits — All Rights Reserved
  🚀
