@@ -1,5 +1,5 @@
 
-# ✦ STELLAR — Particle Field Engine
+# ✦ STELLAR — Particle Field Engine 
 
 <div align="center">
 
