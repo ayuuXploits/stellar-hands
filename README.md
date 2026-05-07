@@ -119,7 +119,7 @@ stellar/
 Key constants at the top of the script block in `index.html`:
 
 ```js
-const COUNT   = 150000;  // Particle count — lower for slower devices
+const COUNT   = 500000;  // Particle count — lower for slower devices
 const DAMPING = 0.938;   // Velocity decay per frame
 const SPRING  = 0.0065;  // Return-to-formation strength
 ```
@@ -128,7 +128,7 @@ const SPRING  = 0.0065;  // Return-to-formation strength
 
 ## 📄 License
 
-© 2025 [ayuuXploits](https://github.com/ayuuXploits). All Rights Reserved.
+© 2026 [ayuuXploits](https://github.com/ayuuXploits). All Rights Reserved.
 
 No part of this project — including source code, design, and assets — may be reproduced, distributed, modified, or used in any form without explicit written permission from the author.
 
