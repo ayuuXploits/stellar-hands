@@ -4,7 +4,7 @@
 <div align="center">
 
 **Real-time hand-tracked particle physics in the browser.**  
-150,000 particles. 8 gestures. 10 formations. Zero dependencies beyond a webcam.
+500,000 particles. 8 gestures. 10 formations. Zero dependencies beyond a webcam.
 
 [Live Demo](#) · [Report Bug](https://github.com/ayuuXploits/stellar/issues) · [Request Feature](https://github.com/ayuuXploits/stellar/issues)
 
@@ -22,7 +22,7 @@ No backend. No build step. Open the HTML file and go.
 
 ## ✨ Features
 
-- **150,000 live particles** rendered with additive blending via WebGL
+- **500,000 live particles** rendered with additive blending via WebGL
 - **8 hand gestures** mapped to unique particle physics effects
 - **10 cosmic formations** — Galaxy, Nebula, Black Hole, Saturn, DNA, Crystal, Torus, Supernova, Starship, Spacecraft
 - **MediaPipe Hands** AI model for real-time pose detection
