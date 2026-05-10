@@ -107,6 +107,7 @@ npx serve .
 
 ```
 stellar/
+├── .gitignore
 ├── LICENSE
 ├── README.md
 ├── stellar.html
