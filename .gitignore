@@ -1,0 +1,39 @@
+# --- Dependencies ---
+node_modules/
+package-lock.json
+yarn.lock
+
+# --- Environment & Credentials ---
+.env
+.env.local
+*.log
+
+# --- Editor / IDE ---
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
+# --- Build / Distribution ---
+dist/
+build/
+out/
+.parcel-cache/
+
+# --- Local AI & Large Assets ---
+# Prevents heavy model weights (Ollama/Qwen) from being pushed to GitHub
+*.bin
+*.gguf
+*.onnx
+models/
+assets/large/
+
+# --- Project Specific ---
+# If you export custom gesture recordings to JSON
+recordings/
