@@ -107,8 +107,14 @@ npx serve .
 
 ```
 stellar/
-├── index.html     # Entire engine — renderer, AI, UI, physics
-└── README.md
+├── LICENSE
+├── README.md
+├── stellar.html
+├── stellar_hands_v3.1     
+├── stellar_handsv3.2.html    # Entire engine — renderer, AI, UI, physics
+├── stellar_v2.html
+└── stellar_v3.html
+
 ```
 
 ---
