@@ -8,7 +8,7 @@ yarn.lock
 .env.local
 *.log
 
-# --- Editor / IDE ---
+# --- Editor / IDE --- 
 .vscode/
 .idea/
 *.sublime-project
