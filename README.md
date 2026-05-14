@@ -1,9 +1,9 @@
 # ✦ STELLAR — Particle Field Engine 
-![Main Header](./docs/vitatrack.png)
+![Main Header](./docs/stellar_hands.png)
 | | |
 |---|---|
-| ![Dashboard](./docs/vitatrack1.png) | ![Targets](./docs/vitatrack2.png) |
-| ![Activity](./docs/vitatrack3.png) | ![Workouts](./docs/vitatrack4.png) |
+| ![Dashboard](./docs/stellar_hands1.png) | ![Targets](./docs/stellar_hands2.png) |
+| ![Activity](./docs/stellar_hands3.png) | ![Workouts](./docs/stellar_hands4.png) |
 
 
 <div align="center">
