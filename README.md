@@ -19,7 +19,7 @@
 
 ## 🌌 Overview
 
-STELLAR is a GPU-accelerated particle field engine that uses your webcam and hand pose estimation to interact with 150,000 real-time particles rendered via Three.js. Point, pinch, slash, or freeze the field — each gesture triggers a distinct physics behaviour.
+STELLAR is a GPU-accelerated particle field engine that uses your webcam and hand pose estimation to interact with 500,000 real-time particles rendered via Three.js. Point, pinch, slash, or freeze the field — each gesture triggers a distinct physics behaviour.
 
 No backend. No build step. Open the HTML file and go.
 
@@ -113,6 +113,8 @@ npx serve .
 
 ```
 stellar/
+├── docs
+    
 ├── .gitignore
 ├── LICENSE
 ├── README.md
