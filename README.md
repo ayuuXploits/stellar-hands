@@ -114,11 +114,11 @@ npx serve .
 ```
 stellar/
 ├── docs
-|     ├── stellar_hands.png
-|     ├──stellar_hands1.png
-|     ├──stellar_hands2.png
-|     ├──stellar_hands3.png
-|     └──stellar_hands4.png
+│      ├── stellar_hands.png
+│      ├──stellar_hands1.png
+│      ├──stellar_hands2.png
+│      ├──stellar_hands3.png
+│      └──stellar_hands4.png
 ├── .gitignore
 ├── LICENSE
 ├── README.md
