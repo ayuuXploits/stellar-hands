@@ -140,6 +140,7 @@ Key constants at the top of the script block in `index.html`:
 const COUNT   = 500000;  // Particle count — lower for slower devices
 const DAMPING = 0.938;   // Velocity decay per frame
 const SPRING  = 0.0065;  // Return-to-formation strength
+
 ```
 
 ---
