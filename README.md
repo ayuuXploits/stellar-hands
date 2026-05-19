@@ -153,6 +153,7 @@ stellar/
 ├── stellar_hands_v3.1.html     # Previous build
 ├── stellar_v3.html             # Pre-hands version
 ├── stellar_v2.html             # Early prototype
+├── stellar.html                # first prototype
 ├── docs/
 │   ├── stellar_hands.png
 │   ├── stellar_hands1.png
