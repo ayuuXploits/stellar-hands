@@ -192,7 +192,7 @@ const SPRING  = 0.0065;   // Return-to-formation strength (higher = snappier)
 
 ## 🌐 Browser Support
 
-| Browser | Minimum Version | Notes |
+| Browser  | Minimum Version | Notes |
 |---------|----------------|-------|
 | Chrome / Edge | 110+ | Recommended — best WebGL performance |
 | Firefox | 115+ | Supported |
