@@ -139,6 +139,7 @@ open stellar_handsv3.2.html
 ```bash
 npx serve .
 # visit http://localhost:3000
+
 ```
 
 > **Note:** Webcam access requires a secure context (`https://` or `localhost`). Opening via `file://` automatically falls back to mouse mode.
