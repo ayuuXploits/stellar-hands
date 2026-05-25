@@ -178,6 +178,7 @@ Key constants at the top of the `<script>` block in `stellar_handsv3.2.html`:
 const COUNT   = 500_000;  // Particle count — reduce to ~100k on slower devices
 const DAMPING = 0.938;    // Velocity decay per frame (0 = instant stop, 1 = no decay)
 const SPRING  = 0.0065;   // Return-to-formation strength (higher = snappier)
+
 ```
 
 **Performance tuning guide:**
