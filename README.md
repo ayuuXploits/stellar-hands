@@ -11,11 +11,12 @@
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-Hands_AI-FF6F00?style=for-the-badge&logo=google&logoColor=white)](https://google.github.io/mediapipe/solutions/hands)
 [![WebGL](https://img.shields.io/badge/Rendering-WebGL-990000?style=for-the-badge&logo=webgl&logoColor=white)](https://www.khronos.org/webgl/)
 
-<br/>
+<br/>  
 
 *500,000 particles. 8 gestures. 10 formations. Zero dependencies beyond a webcam.*
 
 <br/>
+
 
 [**Live Demo**](#) &nbsp;·&nbsp; [**Report Bug**](https://github.com/ayuuXploits/stellar/issues) &nbsp;·&nbsp; [**Request Feature**](https://github.com/ayuuXploits/stellar/issues)
 
