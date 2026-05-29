@@ -83,7 +83,7 @@ The entire engine — renderer, physics, AI tracking, and UI — lives in a sing
 | 👌 | **OK Sign** | **Vortex** — orbital spin around the hand position |
 | ⏸️ | **Hold Fist** | **Freeze** — suspend the entire field mid-motion |
 | ⚡ | **Slash** | **Shockwave** — fast swipe cuts a pressure wave through the field |
-
+ 
 ---
 
 ## 🪐 Formations
