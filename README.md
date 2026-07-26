@@ -167,6 +167,7 @@ stellar/
 ├── .gitignore
 ├── LICENSE
 └── README.md
+
 ```
 
 > The entire engine is self-contained in `stellar_handsv3.2.html`. All Three.js and MediaPipe dependencies are loaded from CDN — no local install needed.
