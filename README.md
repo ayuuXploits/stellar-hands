@@ -143,6 +143,7 @@ npx serve .
 # visit http://localhost:3000
 
 
+
 ```
 
 > **Note:** Webcam access requires a secure context (`https://` or `localhost`). Opening via `file://` automatically falls back to mouse mode.
