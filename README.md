@@ -134,6 +134,7 @@ cd stellar
 
 ```bash
 open stellar_handsv3.2.html
+
 ```
 
 **Option B — serve locally** *(enables webcam)*
