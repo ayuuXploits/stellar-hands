@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>STELLAR HANDS v6</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink:#0a0c12; --ink2:#0f1118;
+  --teal:#2dd4bf; --rose:#fb7185; --gold:#fbbf24; --violet:#a78bfa; --lime:#86efac;
+  --fg:#c8d6e5; --fg2:rgba(200,214,229,0.5); --fg3:rgba(200,214,229,0.2);
+  --panel:rgba(10,12,18,0.88); --border:rgba(45,212,191,0.12); --bordhi:rgba(45,212,191,0.3);
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--ink);font-family:'IBM Plex Mono',monospace;color:var(--fg);}
+#three-cvs{position:fixed;top:0;left:0;z-index:1;}
+#grain{position:fixed;inset:0;z-index:3;pointer-events:none;opacity:0.025;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:160px;}
+#vig{position:fixed;inset:0;z-index:3;pointer-events:none;
+  background:radial-gradient(ellipse 80% 80% at 50% 50%,transparent 28%,rgba(10,12,18,0.82) 100%);}
+
+/* SPLASH */
+#splash{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;
+  background:var(--ink);transition:opacity 1s,transform 1s;}
+#splash.out{opacity:0;transform:scale(1.05);pointer-events:none;}
+.sp-grid{position:absolute;inset:0;
+  background-image:linear-gradient(rgba(45,212,191,0.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(45,212,191,0.03) 1px,transparent 1px);
+  background-size:48px 48px;mask-image:radial-gradient(ellipse 60% 60% at 50% 50%,black,transparent);}
+.sp-o{position:absolute;border-radius:50%;filter:blur(90px);pointer-events:none;}
+.sp-o1{width:420px;height:420px;background:var(--teal);opacity:0.055;top:-120px;right:-80px;animation:df 8s ease-in-out infinite alternate;}
+.sp-o2{width:340px;height:340px;background:var(--rose);opacity:0.055;bottom:-80px;left:-60px;animation:df 6s ease-in-out infinite alternate-reverse;}
+.sp-o3{width:180px;height:180px;background:var(--gold);opacity:0.04;top:45%;left:25%;animation:df 5s ease-in-out infinite alternate;}
+@keyframes df{from{transform:translate(0,0);}to{transform:translate(22px,-28px);}}
+.sp-inner{position:relative;text-align:center;display:flex;flex-direction:column;align-items:center;}
+.sp-eye{font-size:0.52rem;letter-spacing:0.55em;color:var(--teal);text-transform:uppercase;margin-bottom:22px;opacity:0.75;}
+.sp-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(4rem,11vw,9rem);letter-spacing:0.04em;line-height:0.85;color:#fff;}
+.sp-title span{display:block;font-size:0.38em;letter-spacing:0.28em;color:transparent;-webkit-text-stroke:1px rgba(45,212,191,0.45);margin-top:4px;}
+.sp-line{width:160px;height:1px;background:linear-gradient(90deg,transparent,var(--teal),transparent);margin:28px auto;opacity:0.4;}
+.sp-desc{font-size:0.6rem;color:var(--fg2);letter-spacing:0.07em;line-height:2.1;max-width:380px;}
+.sp-chips{display:flex;gap:6px;margin-top:30px;flex-wrap:wrap;justify-content:center;}
+.chip{padding:6px 14px;border:1px solid var(--bordhi);border-radius:2px;font-size:0.5rem;letter-spacing:0.18em;color:var(--teal);background:rgba(45,212,191,0.04);}
+.chip b{display:block;font-size:0.82rem;font-weight:400;margin-bottom:1px;}
+.sp-btn{margin-top:36px;padding:14px 56px;background:transparent;border:1px solid var(--teal);
+  color:var(--teal);font-family:'IBM Plex Mono',monospace;font-size:0.58rem;letter-spacing:0.3em;text-transform:uppercase;
+  cursor:pointer;border-radius:2px;position:relative;overflow:hidden;transition:all 0.25s;}
+.sp-btn::before{content:'';position:absolute;inset:0;background:var(--teal);transform:scaleX(0);transform-origin:left;transition:transform 0.25s;}
+.sp-btn:hover::before{transform:scaleX(1);}
+.sp-btn:hover{color:var(--ink);}
+.sp-btn span{position:relative;z-index:1;}
+
+/* UI */
+#ui{position:fixed;inset:0;z-index:10;pointer-events:none;display:none;}
+
+/* EMOTION BAR - top center */
+#emo-bar{
+  position:absolute;top:18px;left:50%;transform:translateX(-50%);
+  pointer-events:all;min-width:360px;
+}
+.emo-card{
+  background:var(--panel);border:1px solid var(--bordhi);border-radius:4px;
+  padding:12px 18px;backdrop-filter:blur(20px);
+  display:flex;align-items:center;gap:16px;
+}
+.emo-icon{font-size:1.4rem;width:28px;text-align:center;flex-shrink:0;}
+.emo-mid{flex:1;}
+.emo-name{font-size:0.72rem;font-weight:500;color:var(--teal);letter-spacing:0.06em;}
+.emo-desc{font-size:0.5rem;color:var(--fg2);margin-top:2px;letter-spacing:0.04em;}
+.emo-meters{display:flex;gap:8px;margin-top:7px;}
+.meter{flex:1;}
+.meter-lbl{font-size:0.44rem;color:var(--fg3);letter-spacing:0.15em;margin-bottom:3px;text-transform:uppercase;}
+.meter-track{height:3px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;}
+.meter-fill{height:100%;border-radius:2px;transition:width 0.4s ease;}
+.mf-valence{background:var(--teal);}
+.mf-arousal{background:var(--rose);}
+.emo-mic{
+  width:28px;height:28px;border-radius:50%;background:rgba(45,212,191,0.1);
+  border:1px solid var(--bordhi);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:0.72rem;flex-shrink:0;transition:all 0.2s;
+}
+.emo-mic:hover{background:rgba(45,212,191,0.2);}
+.emo-mic.active{background:rgba(251,113,133,0.15);border-color:var(--rose);animation:mic-pulse 1.2s ease-in-out infinite;}
+@keyframes mic-pulse{0%,100%{box-shadow:0 0 0 0 rgba(251,113,133,0.3);}50%{box-shadow:0 0 0 6px rgba(251,113,133,0);}}
+
+/* LEFT PANEL */
+#pl{position:absolute;top:18px;left:18px;width:205px;pointer-events:all;}
+.brand{display:flex;align-items:center;gap:8px;margin-bottom:14px;}
+.bdot{width:6px;height:6px;border-radius:50%;background:var(--teal);box-shadow:0 0 8px var(--teal);animation:pd 2s ease-in-out infinite;}
+@keyframes pd{0%,100%{opacity:1;}50%{opacity:0.35;box-shadow:0 0 18px var(--teal);}}
+.btxt{font-size:0.56rem;letter-spacing:0.38em;color:var(--fg3);text-transform:uppercase;}
+.pcard{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:12px;margin-bottom:7px;backdrop-filter:blur(20px);}
+.pct{font-size:0.46rem;letter-spacing:0.3em;text-transform:uppercase;color:var(--fg3);margin-bottom:10px;}
+.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+.sb{background:transparent;border:1px solid rgba(45,212,191,0.08);color:var(--fg2);
+  font-family:'IBM Plex Mono',monospace;font-size:0.56rem;
+  padding:7px 8px;border-radius:3px;cursor:pointer;
+  transition:all 0.15s;text-align:left;display:flex;align-items:center;gap:5px;}
+.sb .ic{opacity:0.5;font-size:0.76rem;}
+.sb:hover{background:rgba(45,212,191,0.07);border-color:var(--bordhi);color:var(--fg);}
+.sb.active{background:rgba(45,212,191,0.1);border-color:var(--teal);color:var(--teal);}
+
+/* GESTURE LEARNING */
+.learn-btn{
+  width:100%;padding:8px;background:rgba(251,113,133,0.08);border:1px solid rgba(251,113,133,0.25);
+  color:var(--rose);font-family:'IBM Plex Mono',monospace;font-size:0.52rem;letter-spacing:0.12em;
+  border-radius:3px;cursor:pointer;text-transform:uppercase;margin-top:4px;transition:all 0.2s;
+}
+.learn-btn:hover{background:rgba(251,113,133,0.14);}
+.learn-btn.recording{animation:rec-pulse 0.8s ease-in-out infinite alternate;border-color:var(--rose);}
+@keyframes rec-pulse{from{background:rgba(251,113,133,0.08);}to{background:rgba(251,113,133,0.2);}}
+
+/* CUSTOM GESTURES */
+.cg-list{margin-top:6px;}
+.cg-item{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:5px 0;border-bottom:1px solid rgba(45,212,191,0.06);font-size:0.52rem;
+}
+.cg-item:last-child{border:none;}
+.cg-name{color:var(--fg2);}
+.cg-del{background:none;border:none;color:var(--fg3);cursor:pointer;font-size:0.65rem;padding:0 2px;}
+.cg-del:hover{color:var(--rose);}
+.cg-active{color:var(--teal);}
+
+/* RIGHT PANEL */
+#pr{position:absolute;top:18px;right:18px;width:192px;pointer-events:all;}
+.ghero{
+  background:var(--panel);border:1px solid var(--bordhi);border-radius:4px;
+  padding:12px 14px;margin-bottom:7px;backdrop-filter:blur(20px);
+  position:relative;overflow:hidden;
+}
+.ghero::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--teal),transparent);opacity:0.5;}
+.gh-lbl{font-size:0.44rem;letter-spacing:0.28em;text-transform:uppercase;color:var(--fg3);margin-bottom:5px;}
+.gh-name{font-size:0.88rem;font-weight:500;color:var(--teal);letter-spacing:0.05em;}
+.gh-fx{font-size:0.54rem;color:var(--fg2);margin-top:2px;}
+
+/* GRAVITY WELLS indicator */
+.wells-card{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:10px 12px;backdrop-filter:blur(20px);}
+.wells-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.wells-count{font-family:'Bebas Neue',sans-serif;font-size:1.1rem;color:var(--gold);}
+.wells-clear{background:none;border:none;color:var(--fg3);font-family:'IBM Plex Mono',monospace;font-size:0.48rem;cursor:pointer;letter-spacing:0.1em;padding:0;}
+.wells-clear:hover{color:var(--rose);}
+.wells-hint{font-size:0.5rem;color:var(--fg3);line-height:1.6;}
+
+/* FLUID METER */
+.fluid-card{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:10px 12px;backdrop-filter:blur(20px);margin-bottom:7px;}
+.fluid-row{display:flex;align-items:center;gap:10px;}
+.fluid-vis{display:flex;gap:2px;align-items:flex-end;height:22px;}
+.fluid-bar{width:4px;border-radius:1px;background:var(--violet);transition:height 0.1s;}
+.fluid-info{flex:1;}
+.fluid-lbl{font-size:0.46rem;letter-spacing:0.22em;text-transform:uppercase;color:var(--fg3);}
+.fluid-val{font-size:0.65rem;color:var(--violet);margin-top:2px;}
+
+/* SUGGEST BANNER */
+#suggest-banner{
+  position:absolute;top:90px;left:50%;transform:translateX(-50%);
+  background:var(--panel);border:1px solid rgba(167,139,250,0.35);border-radius:4px;
+  padding:10px 18px;backdrop-filter:blur(20px);pointer-events:all;
+  display:none;align-items:center;gap:12px;min-width:280px;
+  animation:slide-in 0.4s cubic-bezier(0.16,1,0.3,1);
+}
+@keyframes slide-in{from{opacity:0;transform:translateX(-50%) translateY(-10px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+.sb-icon{font-size:1rem;}
+.sb-txt{flex:1;font-size:0.56rem;color:var(--fg2);line-height:1.6;}
+.sb-txt b{color:var(--violet);}
+.sb-yes{background:rgba(167,139,250,0.15);border:1px solid rgba(167,139,250,0.3);color:var(--violet);
+  font-family:'IBM Plex Mono',monospace;font-size:0.48rem;letter-spacing:0.12em;
+  padding:5px 12px;border-radius:2px;cursor:pointer;transition:all 0.15s;}
+.sb-yes:hover{background:rgba(167,139,250,0.25);}
+.sb-no{background:none;border:none;color:var(--fg3);cursor:pointer;font-size:0.7rem;padding:0 4px;}
+
+/* BOTTOM BAR */
+#bot{position:absolute;bottom:0;left:0;right:0;display:flex;justify-content:center;padding-bottom:16px;pointer-events:none;}
+.sbar{display:flex;border:1px solid var(--border);border-radius:3px;overflow:hidden;backdrop-filter:blur(14px);background:rgba(10,12,18,0.75);}
+.si2{padding:8px 16px;text-align:center;border-right:1px solid var(--border);}
+.si2:last-child{border:none;}
+.sv2{font-family:'Bebas Neue',sans-serif;font-size:0.88rem;letter-spacing:0.05em;color:var(--fg);}
+.sl2{font-size:0.42rem;letter-spacing:0.2em;color:var(--fg3);text-transform:uppercase;margin-top:1px;}
+.sv2.ok{color:var(--teal);} .sv2.warn{color:var(--gold);} .sv2.bad{color:var(--rose);}
+
+/* CAM */
+#camwrap{position:absolute;bottom:18px;right:18px;pointer-events:none;}
+.camframe{width:142px;height:106px;border-radius:3px;overflow:hidden;border:1px solid var(--bordhi);background:#050810;position:relative;transform:scaleX(-1);}
+.camlbl{font-size:0.44rem;letter-spacing:0.22em;color:var(--fg3);display:flex;justify-content:flex-end;align-items:center;gap:4px;margin-top:5px;}
+.cdot{width:4px;height:4px;border-radius:50%;background:var(--teal);box-shadow:0 0 5px var(--teal);animation:pd 1.5s infinite;}
+
+/* HOLD RING */
+#holdring{position:fixed;pointer-events:none;z-index:200;display:none;}
+.hr-t{fill:none;stroke:rgba(45,212,191,0.1);stroke-width:1.8;}
+.hr-a{fill:none;stroke:var(--teal);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:188.4;stroke-dashoffset:188.4;filter:drop-shadow(0 0 4px rgba(45,212,191,0.6));transition:stroke-dashoffset 0.05s linear;}
+
+/* SLASH */
+#slashcvs{position:fixed;inset:0;z-index:150;pointer-events:none;}
+
+/* FLASH */
+#flash{position:fixed;inset:0;z-index:900;pointer-events:none;background:var(--teal);opacity:0;transition:opacity 0.1s;}
+#flash.go{opacity:0.04;}
+
+/* GESTURE RECORD MODAL */
+#rec-modal{
+  position:fixed;inset:0;z-index:1500;display:none;align-items:center;justify-content:center;
+  background:rgba(10,12,18,0.85);backdrop-filter:blur(8px);
+}
+#rec-modal.show{display:flex;}
+.rec-box{
+  background:var(--ink2);border:1px solid var(--bordhi);border-radius:6px;
+  padding:28px 32px;max-width:340px;width:90%;text-align:center;
+}
+.rec-title{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:0.08em;color:var(--teal);margin-bottom:8px;}
+.rec-sub{font-size:0.58rem;color:var(--fg2);line-height:1.8;margin-bottom:20px;}
+.rec-name-input{
+  width:100%;background:rgba(45,212,191,0.05);border:1px solid var(--bordhi);
+  border-radius:3px;padding:9px 12px;color:var(--fg);font-family:'IBM Plex Mono',monospace;
+  font-size:0.64rem;letter-spacing:0.08em;outline:none;margin-bottom:14px;
+}
+.rec-name-input::placeholder{color:var(--fg3);}
+.rec-name-input:focus{border-color:var(--teal);}
+.rec-countdown{font-family:'Bebas Neue',sans-serif;font-size:3rem;color:var(--rose);height:60px;display:flex;align-items:center;justify-content:center;}
+.rec-hint{font-size:0.5rem;color:var(--fg3);letter-spacing:0.08em;margin-bottom:18px;}
+.rec-btns{display:flex;gap:8px;}
+.rec-start{flex:1;padding:10px;background:rgba(45,212,191,0.1);border:1px solid var(--teal);color:var(--teal);
+  font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.18em;text-transform:uppercase;border-radius:3px;cursor:pointer;transition:all 0.2s;}
+.rec-start:hover{background:rgba(45,212,191,0.18);}
+.rec-cancel{padding:10px 16px;background:transparent;border:1px solid var(--border);color:var(--fg3);
+  font-family:'IBM Plex Mono',monospace;font-size:0.56rem;letter-spacing:0.12em;border-radius:3px;cursor:pointer;}
+
+/* GRAVITY WELL CANVAS */
+#well-cvs{position:fixed;inset:0;z-index:4;pointer-events:none;}
+
+/* PERF WARN */
+#perf{position:fixed;top:18px;left:50%;transform:translateX(-50%);
+  background:rgba(251,113,133,0.1);border:1px solid rgba(251,113,133,0.35);border-radius:3px;
+  padding:6px 16px;z-index:500;display:none;font-size:0.5rem;letter-spacing:0.1em;color:var(--rose);}
+</style>
+</head>
+<body>
+<div id="grain"></div>
+<div id="vig"></div>
+<div id="flash"></div>
+
+<!-- SPLASH -->
+<div id="splash">
+  <div class="sp-grid"></div>
+  <div class="sp-o sp-o1"></div><div class="sp-o sp-o2"></div><div class="sp-o sp-o3"></div>
+  <div class="sp-inner">
+    <div class="sp-eye">Quantum Particle Engine · v6.0</div>
+    <div class="sp-title">STELLAR<span>HANDS</span></div>
+    <div class="sp-line"></div>
+    <div class="sp-desc">Emotion-aware · Dual-hand physics · Gesture learning<br>Fluid simulation · Gravity wells · 500K particles</div>
+    <div class="sp-chips">
+      <div class="chip"><b>500K</b>Particles</div>
+      <div class="chip"><b>SPH</b>Fluid</div>
+      <div class="chip"><b>2×</b>Hands</div>
+      <div class="chip"><b>AI</b>Emotion</div>
+      <div class="chip"><b>∞</b>Gestures</div>
+    </div>
+    <button class="sp-btn" id="btn-launch"><span>▶ Initialize Engine</span></button>
+  </div>
+</div>
+
+<!-- UI -->
+<div id="ui">
+  <!-- EMOTION BAR -->
+  <div id="emo-bar">
+    <div class="emo-card">
+      <div class="emo-icon" id="emo-icon">🎵</div>
+      <div class="emo-mid">
+        <div class="emo-name" id="emo-name">NEUTRAL</div>
+        <div class="emo-desc" id="emo-desc">no audio · field in rest state</div>
+        <div class="emo-meters">
+          <div class="meter"><div class="meter-lbl">Valence</div><div class="meter-track"><div class="meter-fill mf-valence" id="m-val" style="width:50%"></div></div></div>
+          <div class="meter"><div class="meter-lbl">Arousal</div><div class="meter-track"><div class="meter-fill mf-arousal" id="m-aro" style="width:15%"></div></div></div>
+        </div>
+      </div>
+      <div class="emo-mic" id="mic-btn" title="Toggle microphone">🎤</div>
+    </div>
+  </div>
+
+  <!-- SUGGEST BANNER -->
+  <div id="suggest-banner">
+    <div class="sb-icon">✦</div>
+    <div class="sb-txt">You often visit <b id="sug-name">NEBULA</b> — try it?</div>
+    <button class="sb-yes" id="sug-yes">Switch ↗</button>
+    <button class="sb-no" id="sug-no">✕</button>
+  </div>
+
+  <!-- LEFT PANEL -->
+  <div id="pl">
+    <div class="brand"><div class="bdot"></div><div class="btxt">Stellar v6</div></div>
+    <div class="pcard">
+      <div class="pct">Formation</div>
+      <div class="sgrid" id="sgrid">
+        <button class="sb active" data-s="galaxy">   <span class="ic">◈</span>Galaxy</button>
+        <button class="sb"        data-s="nebula">   <span class="ic">◉</span>Nebula</button>
+        <button class="sb"        data-s="blackhole"><span class="ic">◎</span>B.Hole</button>
+        <button class="sb"        data-s="saturn">   <span class="ic">⊙</span>Saturn</button>
+        <button class="sb"        data-s="starship"> <span class="ic">△</span>Starship</button>
+        <button class="sb"        data-s="spacecraft"><span class="ic">◇</span>Craft</button>
+        <button class="sb"        data-s="dna">      <span class="ic">∿</span>DNA</button>
+        <button class="sb"        data-s="crystal">  <span class="ic">✦</span>Crystal</button>
+        <button class="sb"        data-s="torus">    <span class="ic">○</span>Torus</button>
+        <button class="sb"        data-s="supernova"><span class="ic">✳</span>Nova</button>
+      </div>
+    </div>
+    <!-- GESTURE LEARNING -->
+    <div class="pcard">
+      <div class="pct">Custom Gestures</div>
+      <div class="cg-list" id="cg-list"></div>
+      <button class="learn-btn" id="learn-btn">+ Record Gesture</button>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div id="pr">
+    <div class="ghero">
+      <div class="gh-lbl">Active Gesture</div>
+      <div class="gh-name" id="gh-name">TRACKING…</div>
+      <div class="gh-fx" id="gh-fx">awaiting input</div>
+    </div>
+    <!-- FLUID SIM -->
+    <div class="fluid-card">
+      <div class="pct">Fluid Field</div>
+      <div class="fluid-row">
+        <div class="fluid-vis" id="fluid-vis">
+          <div class="fluid-bar" style="height:30%"></div>
+          <div class="fluid-bar" style="height:50%"></div>
+          <div class="fluid-bar" style="height:40%"></div>
+          <div class="fluid-bar" style="height:70%"></div>
+          <div class="fluid-bar" style="height:55%"></div>
+          <div class="fluid-bar" style="height:35%"></div>
+          <div class="fluid-bar" style="height:60%"></div>
+          <div class="fluid-bar" style="height:45%"></div>
+        </div>
+        <div class="fluid-info">
+          <div class="fluid-lbl">SPH Density</div>
+          <div class="fluid-val" id="fluid-val">—</div>
+        </div>
+      </div>
+    </div>
+    <!-- GRAVITY WELLS -->
+    <div class="wells-card">
+      <div class="wells-header">
+        <div>
+          <div class="pct" style="margin:0 0 2px">Gravity Wells</div>
+          <div style="display:flex;align-items:baseline;gap:6px;">
+            <div class="wells-count" id="well-cnt">0</div>
+            <div style="font-size:0.5rem;color:var(--fg3)">active</div>
+          </div>
+        </div>
+        <button class="wells-clear" id="well-clear">clear all</button>
+      </div>
+      <div class="wells-hint">Pinch + hold 1.2s<br>to place a well</div>
+    </div>
+  </div>
+
+  <!-- BOTTOM BAR -->
+  <div id="bot">
+    <div class="sbar">
+      <div class="si2"><div class="sv2" id="s-p">500K</div><div class="sl2">Particles</div></div>
+      <div class="si2"><div class="sv2" id="s-f">GALAXY</div><div class="sl2">Formation</div></div>
+      <div class="si2"><div class="sv2 ok" id="s-fps">60</div><div class="sl2">FPS</div></div>
+      <div class="si2"><div class="sv2" id="s-g">—</div><div class="sl2">Gesture</div></div>
+      <div class="si2"><div class="sv2" id="s-emo">NEUTRAL</div><div class="sl2">Emotion</div></div>
+      <div class="si2"><div class="sv2 ok" id="s-hands">0</div><div class="sl2">Hands</div></div>
+    </div>
+  </div>
+
+  <!-- CAMERA -->
+  <div id="camwrap">
+    <div class="camframe">
+      <video id="vid" playsinline style="display:none;"></video>
+      <canvas id="skelcvs" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+    </div>
+    <div class="camlbl"><div class="cdot"></div>LIVE FEED</div>
+  </div>
+</div>
+
+<!-- MODALS / OVERLAYS -->
+<div id="rec-modal">
+  <div class="rec-box">
+    <div class="rec-title">Record Gesture</div>
+    <div class="rec-sub">Name your gesture, then show it to the camera for 3 seconds. It will be saved and recognized automatically.</div>
+    <input class="rec-name-input" id="rec-name" placeholder="e.g. peace, claw, gun...">
+    <div class="rec-countdown" id="rec-cd">—</div>
+    <div class="rec-hint">HOLD YOUR GESTURE STEADY DURING RECORDING</div>
+    <div class="rec-btns">
+      <button class="rec-start" id="rec-start">Start Recording</button>
+      <button class="rec-cancel" id="rec-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<canvas id="well-cvs"></canvas>
+<canvas id="slashcvs"></canvas>
+<div id="holdring"><svg width="72" height="72" viewBox="0 0 72 72"><circle class="hr-t" cx="36" cy="36" r="30"/><circle class="hr-a" cx="36" cy="36" r="30" transform="rotate(-90 36 36)"/></svg></div>
+<div id="perf">⚠ LOW FPS — reduce formation density</div>
+
+<!-- VERTEX SHADER -->
+<script id="vs" type="x-shader/x-vertex">
+uniform float uTime;
+uniform vec3  uHand0;
+uniform vec3  uHand1;
+uniform float uActive0;
+uniform float uActive1;
+uniform int   uGesture0;
+uniform int   uGesture1;
+uniform float uFrozen;
+uniform float uOrbit;
+uniform float uEmotionArousal;
+uniform float uEmotionValence;
+uniform float uEmotionHue;
+
+attribute float aSeed;
+
+varying vec3  vCol;
+varying float vAlpha;
+
+void main(){
+  vec3 pos = position;
+
+  // Orbit drift — gentle idle life
+  float orbit = uOrbit * 0.008 * (0.4 + aSeed * 0.6);
+  pos.x += cos(orbit + aSeed * 6.28) * (0.15 + aSeed * 0.12);
+  pos.y += sin(orbit * 1.2 + aSeed * 3.14) * (0.10 + aSeed * 0.08);
+
+  // Emotion-driven global pulsation
+  float emotionPulse = sin(uTime * (0.5 + uEmotionArousal * 2.5) + aSeed * 6.28) * uEmotionArousal * 0.8;
+  pos += normalize(pos + vec3(0.001)) * emotionPulse;
+
+  // ── HAND 0 interactions ──
+  if(uActive0 > 0.5 && uFrozen < 0.5){
+    vec3 toH = uHand0 - pos;
+    float d  = length(toH);
+    float fo = max(0.0, 1.0 - d / 52.0);
+    vec3 dn  = normalize(toH + vec3(0.001));
+    if(uGesture0 == 1) pos -= dn * fo * fo * 2.2;      // open = repel
+    if(uGesture0 == 2) pos += dn * fo * fo * 1.8;      // pinch = attract
+    if(uGesture0 == 3) pos += dn * fo * 3.2;           // fist = implode
+    if(uGesture0 == 4 && abs(toH.y)<5.0) pos.x += sign(toH.x)*fo*4.0;
+    if(uGesture0 == 5){ float s=sign(pos.x-uHand0.x); pos.x+=s*fo*6.0; }
+    if(uGesture0 == 6){ float a=atan(toH.y,toH.x); pos.x+=(-sin(a))*fo*0.85; pos.y+=(cos(a))*fo*0.85; }
+    // Bright glow core
+    if(d < 6.0){ pos += dn * (1.0-d/6.0) * -0.3; }
+  }
+
+  // ── HAND 1 interactions (left = attract well) ──
+  if(uActive1 > 0.5 && uFrozen < 0.5){
+    vec3 toH = uHand1 - pos;
+    float d  = length(toH);
+    float fo = max(0.0, 1.0 - d / 52.0);
+    vec3 dn  = normalize(toH + vec3(0.001));
+    if(uGesture1 == 2) pos += dn * fo * fo * 2.0;
+    if(uGesture1 == 1) pos -= dn * fo * fo * 2.5;
+    // Two hands close = compression wave
+    float handSep = length(uHand0 - uHand1);
+    if(uActive0 > 0.5 && handSep < 18.0){
+      vec3 midpoint = (uHand0 + uHand1) * 0.5;
+      float compression = 1.0 - handSep / 18.0;
+      pos += normalize(pos - midpoint + vec3(0.001)) * compression * fo * 3.5;
+    }
+  }
+
+  // Color: base + emotion tint
+  vec3 baseCol = color;
+  // Arousal shifts saturation outward
+  float aro = uEmotionArousal;
+  float val = uEmotionValence;
+  // sad-low arousal: desaturate + blue shift
+  vec3 gray = vec3(dot(baseCol, vec3(0.333)));
+  baseCol = mix(baseCol, gray + vec3(-0.05,0.0,0.12), (1.0-val) * (1.0-aro) * 0.55);
+  // excited-high arousal+valence: saturate + warm shift
+  baseCol = mix(baseCol, baseCol * vec3(1.3, 1.1, 0.85), val * aro * 0.5);
+  // angry-high arousal+low valence: red shift
+  baseCol = mix(baseCol, baseCol * vec3(1.4, 0.7, 0.6), (1.0-val) * aro * 0.45);
+
+  vCol   = baseCol;
+  vAlpha = 0.55 + aSeed * 0.35;
+
+  // Point size — SMALLER for 500k clarity
+  vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+  gl_PointSize  = max(0.4, min(2.8, 220.0 / length(mvPos.xyz)) * (0.5 + aSeed * 0.7));
+  gl_Position   = projectionMatrix * mvPos;
+}
+</script>
+<script id="fs" type="x-shader/x-fragment">
+varying vec3  vCol;
+varying float vAlpha;
+void main(){
+  vec2 uv = gl_PointCoord * 2.0 - 1.0;
+  float d = dot(uv,uv);
+  if(d > 1.0) discard;
+  // Soft disc with tight core — avoids blown-out look
+  float alpha = exp(-d * 2.8) * vAlpha;
+  gl_FragColor = vec4(vCol * alpha, alpha);
+}
+</script>
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════
+//  CONSTANTS
+// ══════════════════════════════════════════
+const COUNT   = 500000;
+const DAMPING = 0.934;
+const SPRING  = 0.0052;
+const SPH_W   = 32; // fluid grid width
+const SPH_H   = 32;
+const GESTURE_ENUM = {none:0,open:1,pinch:2,fist:3,one:4,two:5,ok:6,hold:7,slash:8};
+const GESTURE_INFO = {
+  fist:{n:'FIST',f:'implode field'},pinch:{n:'PINCH',f:'attract stream'},
+  one:{n:'1 FINGER',f:'laser pierce'},two:{n:'2 FINGERS',f:'scissor split'},
+  open:{n:'OPEN HAND',f:'repel burst'},ok:{n:'OK SIGN',f:'vortex spin'},
+  hold:{n:'HOLD FIST',f:'freeze field'},slash:{n:'SLASH',f:'shockwave cut'},
+  none:{n:'—',f:'awaiting input'},
+};
+const HAND_CONNECTIONS=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20]];
+
+// ══════════════════════════════════════════
+//  GLOBALS
+// ══════════════════════════════════════════
+let scene,camera,renderer,shaderMat,ptsMesh;
+let posArr, velArr, targetArr;
+let hands=[{x:0,y:0,active:false,gesture:'none'},{x:0,y:0,active:false,gesture:'none'}];
+let currentGesture='none';
+let holdTimer=0,isHeld=false;
+let orbitPhase=0, fCount=0, lastFPST=0, fps=60;
+let slashPts=[], slashActive=false;
+let gravityWells=[];  // [{x,y,strength}]
+let wellHoldTimer=0;
+
+// SPH fluid grid
+let sphVx = new Float32Array(SPH_W * SPH_H);
+let sphVy = new Float32Array(SPH_W * SPH_H);
+let sphDen= new Float32Array(SPH_W * SPH_H);
+
+// Emotion state
+let emotion = {name:'NEUTRAL',icon:'🎵',desc:'no audio · field in rest state',valence:0.5,arousal:0.15,hue:0};
+let micActive=false, audioCtx=null, analyser=null, audioData=null;
+
+// Gesture learning
+let customGestures=JSON.parse(localStorage.getItem('stellar_gestures')||'[]');
+let isRecording=false, recordFrames=[], recordName='';
+
+// Formation tracking for prediction
+let formationDwell={};
+let lastFormation='galaxy', dwellStart=Date.now();
+let suggestTimer=null;
+
+// ══════════════════════════════════════════
+//  SHAPE BUILDERS
+// ══════════════════════════════════════════
+function buildShape(type){
+  const P=new Float32Array(COUNT*3), C=new Float32Array(COUNT*3);
+  const rnd=Math.random;
+  for(let i=0;i<COUNT;i++){
+    let x=0,y=0,z=0,r=1,g=1,b=1;
+    const i3=i*3;
+    switch(type){
+      case 'galaxy':{
+        const arms=6,d=Math.pow(rnd(),0.42)*36,arm=Math.floor(rnd()*arms);
+        const base=(arm/arms)*Math.PI*2,twist=d*0.3+(rnd()-0.5)*0.08,spr=Math.max(0.06,(1-d/36))*2.2;
+        x=d*Math.cos(base+twist)+(rnd()-0.5)*spr; y=(rnd()-0.5)*(36-d)*0.08; z=d*Math.sin(base+twist)+(rnd()-0.5)*spr;
+        const t=d/36;
+        if(d<2){r=1;g=0.97;b=0.94;}else if(rnd()<0.018){r=g=b=1;}
+        else{r=0.2+t*0.6;g=0.45+t*0.2;b=1-t*0.7;} break;
+      }
+      case 'nebula':{
+        const lobe=Math.floor(rnd()*7),lx=[0,15,-13,11,-9,4,-7][lobe],ly=[0,7,-6,-9,10,-12,5][lobe];
+        const nr=Math.pow(rnd(),0.5)*15,na=rnd()*Math.PI*2;
+        x=lx+nr*Math.cos(na)+(rnd()-0.5)*5; y=ly+(rnd()-0.5)*7; z=(rnd()-0.5)*14;
+        const h=lobe/7; const dim=0.38+rnd()*0.62;
+        r=(0.3+Math.sin(h*Math.PI*2)*0.5)*dim; g=(0.1+Math.cos(h*Math.PI*2+1.5)*0.4)*dim; b=(0.6+Math.sin(h*Math.PI+0.5)*0.38)*dim; break;
+      }
+      case 'blackhole':{
+        const p=rnd();
+        if(p<0.5){const dr=4+rnd()*23,da=rnd()*Math.PI*2;x=dr*Math.cos(da);z=dr*Math.sin(da);y=(rnd()-0.5)*0.55*(1-dr/27);const heat=1-dr/27;r=1;g=heat*0.5;b=heat*0.07;}
+        else if(p<0.66){const jet=rnd()>0.5?1:-1,jt=rnd()*22;x=(rnd()-0.5)*jt*0.1;y=jet*(8+jt);z=(rnd()-0.5)*jt*0.1;r=0.28;g=0.58;b=1;}
+        else if(p<0.8){const lr=3.8+rnd()*0.7,la=rnd()*Math.PI*2;x=lr*Math.cos(la);y=(rnd()-0.5)*0.22;z=lr*Math.sin(la);r=1;g=0.93;b=0.76;}
+        else{const bs=26+rnd()*6,ba=rnd()*Math.PI*2,bt=rnd()*Math.PI;x=bs*Math.sin(bt)*Math.cos(ba);y=bs*Math.sin(bt)*Math.sin(ba);z=bs*Math.cos(bt);r=g=b=rnd()*0.28;}
+        break;
+      }
+      case 'saturn':{
+        const p=rnd();
+        if(p<0.33){const ph=rnd()*Math.PI*2,th=Math.acos(2*rnd()-1),rad=8+rnd()*0.5;x=rad*Math.sin(th)*Math.cos(ph);y=rad*Math.sin(th)*Math.sin(ph);z=rad*Math.cos(th);const band=Math.floor(Math.abs(z)/2)%2;r=band?1:0.9;g=band?0.84:0.77;b=band?0.5:0.44;}
+        else if(p<0.8){const band=Math.floor(rnd()*8),rMin=11+band*2.3,rMax=rMin+1.7,rad=rMin+rnd()*(rMax-rMin),a=rnd()*Math.PI*2;x=rad*Math.cos(a);y=(rnd()-0.5)*0.5;z=rad*Math.sin(a);const dn=rnd()*rnd();r=(0.9-band*0.02)*dn;g=(0.8-band*0.015)*dn;b=(0.48+band*0.03)*dn;}
+        else{const ma=rnd()*Math.PI*2,mr=27+rnd()*2;x=mr*Math.cos(ma);y=(rnd()-0.5)*1.4;z=mr*Math.sin(ma);r=g=b=0.52+rnd()*0.3;}
+        break;
+      }
+      case 'starship':{
+        const p=rnd();
+        if(p<0.22){const h=(rnd()-0.5)*28,a=rnd()*Math.PI*2;x=Math.cos(a)*3.8;y=h;z=Math.sin(a)*3.8;r=0.6;g=0.63;b=0.68;}
+        else if(p<0.39){const nh=rnd()*9,nr=3.8*(1-nh/9)*Math.sqrt(1-(nh/9)*0.4),na=rnd()*Math.PI*2;x=Math.cos(na)*nr;y=14+nh;z=Math.sin(na)*nr;r=0.73;g=0.76;b=0.82;}
+        else if(p<0.53){const fi=Math.floor(rnd()*4),fa=(fi/4)*Math.PI*2;x=(4.3+rnd()*2)*Math.cos(fa);y=5+(rnd()-0.5)*4.5;z=(4.3+rnd()*2)*Math.sin(fa);r=0.4;g=0.43;b=0.48;}
+        else if(p<0.66){const fl=Math.floor(rnd()*3),fa2=(fl/3)*Math.PI*2;x=(4.1+rnd()*1.8)*Math.cos(fa2);y=-7+(rnd()-0.5)*5;z=(4.1+rnd()*1.8)*Math.sin(fa2);r=0.5;g=0.53;b=0.58;}
+        else if(p<0.81){const ei=Math.floor(rnd()*7),ea=ei===6?0:(ei/6)*Math.PI*2,er=ei===6?0:2.6+rnd()*0.5;x=Math.cos(ea)*er;y=-14+(rnd()-0.5)*1.5;z=Math.sin(ea)*er;r=0.5;g=0.48;b=0.43;}
+        else{x=(rnd()-0.5)*8;y=-15-rnd()*10;z=(rnd()-0.5)*8;const fd=rnd();r=1;g=0.48*fd+0.09;b=0.05*fd;}
+        break;
+      }
+      case 'spacecraft':{
+        const p=rnd();
+        if(p<0.24){const h=(rnd()-0.5)*22,a=rnd()*Math.PI*2;x=Math.cos(a)*2.6;y=h;z=Math.sin(a)*2.6;r=0.46;g=0.56;b=0.74;}
+        else if(p<0.4){const wing=rnd()>0.5?1:-1,wu=rnd(),wv=rnd();x=wing*(4.5+wu*10);y=(wv-0.5)*8;z=(rnd()-0.5)*0.34;r=0.1;g=0.36;b=0.86;}
+        else if(p<0.53){const da=rnd()*Math.PI*2,dr=rnd()*5.5;x=Math.cos(da)*dr;y=13+Math.sin(da)*dr*0.4;z=Math.sin(da)*dr;r=0.78;g=0.84;b=0.9;}
+        else if(p<0.64){const ti=Math.floor(rnd()*4),ta=(ti/4)*Math.PI*2;x=Math.cos(ta)*4.2;y=-10+(rnd()-0.5)*2;z=Math.sin(ta)*4.2;r=0.36;g=0.46;b=0.58;}
+        else if(p<0.75){const tg=Math.floor(rnd()*4),tga=(tg/4)*Math.PI*2;x=Math.cos(tga)*4.2;y=-11-rnd()*3;z=Math.sin(tga)*4.2;r=0.16;g=0.8;b=1;}
+        else if(p<0.86){x=(rnd()-0.5)*3;y=11+(rnd()-0.5)*3;z=3.5+rnd()*2;r=0.68;g=0.8;b=0.9;}
+        else{const ri=rnd()>0.5?1:-1;x=ri*(2.6+rnd()*0.5);y=(rnd()-0.5)*18;z=2.8+rnd()*2;r=0.55;g=0.26;b=0.16;}
+        break;
+      }
+      case 'dna':{
+        const height=(rnd()-0.5)*46,twist=height*0.27,strand=rnd()>0.5?1:-1;
+        x=strand*6.8*Math.cos(twist)+(rnd()-0.5)*0.38; y=height+(rnd()-0.5)*0.28; z=strand*6.8*Math.sin(twist)+(rnd()-0.5)*0.38;
+        if(strand>0){r=0.1;g=0.58;b=1;}else{r=1;g=0.25;b=0.42;}
+        if(rnd()<0.1){const rh=Math.round(height/4)*4,rt2=rh*0.27,ru=rnd();x=(ru*2-1)*6.8*Math.cos(rt2);y=rh;z=(ru*2-1)*6.8*Math.sin(rt2);r=0.94;g=0.94;b=0.2;}
+        break;
+      }
+      case 'crystal':{
+        const seg=Math.floor(rnd()*6),cx=[0,10,-9,7,-6,4][seg],cy=[0,5,-6,-8,10,-4][seg],cz=[0,3,-4,6,-3,7][seg];
+        const ht=14+seg*3,fa=rnd()*Math.PI*2,fy=(rnd()-0.5)*ht,fr=(ht/2-Math.abs(fy))/(ht/2)*4.6;
+        x=cx+fr*Math.cos(fa);y=cy+fy;z=cz+fr*Math.sin(fa);
+        const hue=seg/6; r=0.5+Math.sin(hue*Math.PI*2)*0.46; g=0.2+Math.cos(hue*Math.PI*2+2)*0.4; b=0.82+Math.sin(hue*Math.PI)*0.16;
+        break;
+      }
+      case 'torus':{
+        const kp=3,kq=2,t2=rnd()*Math.PI*2*kp,r2=Math.cos(kq*t2/kp)*10+18;
+        x=r2*Math.cos(t2/kp)*0.68+(rnd()-0.5)*1.0; y=r2*Math.sin(t2/kp)*0.68+(rnd()-0.5)*1.0; z=-Math.sin(kq*t2/kp)*10*0.68+(rnd()-0.5)*1.0;
+        const prog=t2/(Math.PI*2*kp); r=0.26+prog*0.7;g=0.8-prog*0.48;b=1-prog*0.22; break;
+      }
+      case 'supernova':{
+        const p=rnd();
+        if(p<0.55){const sp=rnd()*Math.PI*2,st=Math.acos(2*rnd()-1),sr=17+Math.sin(sp*9)*2+rnd()*3.5;x=sr*Math.sin(st)*Math.cos(sp);y=sr*Math.sin(st)*Math.sin(sp);z=sr*Math.cos(st);const ht2=sp/(Math.PI*2);r=1;g=0.25+ht2*0.5;b=0.04+ht2*0.28;}
+        else if(p<0.76){const fa=rnd()*Math.PI*2,fd=rnd()*22;x=fd*Math.cos(fa)+(rnd()-0.5)*3;y=(rnd()-0.5)*5;z=fd*Math.sin(fa)+(rnd()-0.5)*3;r=0.84;g=0.44;b=0.07;}
+        else{const cr=rnd()*3.5,ca=rnd()*Math.PI*2,ct=Math.acos(2*rnd()-1);x=cr*Math.sin(ct)*Math.cos(ca);y=cr*Math.sin(ct)*Math.sin(ca);z=cr*Math.cos(ct);r=0.9;g=0.95;b=1;}
+        break;
+      }
+    }
+    P[i3]=x;P[i3+1]=y;P[i3+2]=z;
+    C[i3]=r;C[i3+1]=g;C[i3+2]=b;
+  }
+  return{P,C};
+}
+
+// ══════════════════════════════════════════
+//  THREE.JS INIT
+// ══════════════════════════════════════════
+function init3D(){
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.01,2000);
+  camera.position.set(0,0,64);
+
+  const cvs=document.createElement('canvas');
+  cvs.id='three-cvs'; document.body.prepend(cvs);
+  renderer=new THREE.WebGLRenderer({antialias:false,alpha:false,powerPreference:'high-performance',canvas:cvs});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.setClearColor(0x0a0c12);
+
+  const d=buildShape('galaxy');
+  targetArr=d.P; posArr=new Float32Array(COUNT*3); velArr=new Float32Array(COUNT*3);
+  const seeds=new Float32Array(COUNT);
+  for(let i=0;i<COUNT;i++){
+    posArr[i*3]  =targetArr[i*3]  +(Math.random()-0.5)*200;
+    posArr[i*3+1]=targetArr[i*3+1]+(Math.random()-0.5)*200;
+    posArr[i*3+2]=targetArr[i*3+2]+(Math.random()-0.5)*200;
+    seeds[i]=Math.random();
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(posArr,3));
+  geo.setAttribute('color',   new THREE.BufferAttribute(d.C,3));
+  geo.setAttribute('aSeed',   new THREE.BufferAttribute(seeds,1));
+
+  shaderMat=new THREE.ShaderMaterial({
+    vertexShader:  document.getElementById('vs').textContent,
+    fragmentShader:document.getElementById('fs').textContent,
+    uniforms:{
+      uTime:         {value:0},
+      uHand0:        {value:new THREE.Vector3()},
+      uHand1:        {value:new THREE.Vector3()},
+      uActive0:      {value:0},
+      uActive1:      {value:0},
+      uGesture0:     {value:0},
+      uGesture1:     {value:0},
+      uFrozen:       {value:0},
+      uOrbit:        {value:0},
+      uEmotionArousal:{value:0.15},
+      uEmotionValence:{value:0.5},
+      uEmotionHue:   {value:0},
+    },
+    vertexColors:true,transparent:true,
+    blending:THREE.AdditiveBlending,depthWrite:false,
+  });
+
+  ptsMesh=new THREE.Points(geo,shaderMat);
+  scene.add(ptsMesh);
+
+  window.addEventListener('resize',()=>{
+    camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth,innerHeight);
+    slashCvs.width=innerWidth;slashCvs.height=innerHeight;
+    wellCvs.width=innerWidth;wellCvs.height=innerHeight;
+  });
+
+  // Mouse fallback
+  window.addEventListener('pointermove',e=>{
+    if(!hands[0].active&&!hands[1].active){
+      hands[0].x=(e.clientX/innerWidth-0.5)*94;
+      hands[0].y=(0.5-e.clientY/innerHeight)*74;
+      hands[0].gesture=e.buttons===1?'pinch':'open';
+      setGestureUI(hands[0].gesture);
+    }
+    if(slashActive){slashPts.push({x:e.clientX,y:e.clientY,t:Date.now()});detectSlash();}
+  });
+  window.addEventListener('pointerdown',e=>{
+    if(!hands[0].active){slashActive=true;slashPts=[{x:e.clientX,y:e.clientY,t:Date.now()}];}
+  });
+  window.addEventListener('pointerup',()=>{if(!hands[0].active){slashActive=false;slashPts=[];}});
+}
+
+// ══════════════════════════════════════════
+//  SPH FLUID SIMULATION (32×32 grid)
+// ══════════════════════════════════════════
+function sphStep(){
+  // Reset density
+  sphDen.fill(0);
+  // Accumulate from particle positions (sampled)
+  const step=Math.ceil(COUNT/8000);
+  const wx=94/SPH_W, wy=74/SPH_H;
+  for(let i=0;i<COUNT;i+=step){
+    const i3=i*3;
+    const gx=Math.floor((posArr[i3]/wx+SPH_W/2));
+    const gy=Math.floor((posArr[i3+1]/wy+SPH_H/2));
+    if(gx>=0&&gx<SPH_W&&gy>=0&&gy<SPH_H) sphDen[gy*SPH_W+gx]+=0.008;
+  }
+  // Hand velocity injection
+  for(let h=0;h<2;h++){
+    if(!hands[h].active) continue;
+    const gx=Math.floor((hands[h].x/94+0.5)*SPH_W);
+    const gy=Math.floor((hands[h].y/74+0.5)*SPH_H);
+    const r=3;
+    for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+      const cx=gx+dx,cy=gy+dy;
+      if(cx<0||cx>=SPH_W||cy<0||cy>=SPH_H) continue;
+      const fo=1-Math.sqrt(dx*dx+dy*dy)/r;
+      if(fo<=0) continue;
+      if(hands[h].gesture==='open'){sphVx[cy*SPH_W+cx]-=dx*fo*0.04;sphVy[cy*SPH_W+cx]-=dy*fo*0.04;}
+      if(hands[h].gesture==='pinch'||hands[h].gesture==='fist'){sphVx[cy*SPH_W+cx]+=dx*fo*0.04;sphVy[cy*SPH_W+cx]+=dy*fo*0.04;}
+    }
+  }
+  // Gravity well injection
+  for(const w of gravityWells){
+    const gx=Math.floor((w.x/94+0.5)*SPH_W);
+    const gy=Math.floor((-w.y/74+0.5)*SPH_H);
+    const r=4;
+    for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+      const cx=gx+dx,cy=gy+dy;
+      if(cx<0||cx>=SPH_W||cy<0||cy>=SPH_H) continue;
+      const fo=1-Math.sqrt(dx*dx+dy*dy)/r;
+      if(fo>0){sphVx[cy*SPH_W+cx]+=dx*fo*0.02;sphVy[cy*SPH_W+cx]+=dy*fo*0.02;}
+    }
+  }
+  // Diffuse + dampen
+  for(let i=0;i<SPH_W*SPH_H;i++){
+    sphVx[i]*=0.92; sphVy[i]*=0.92;
+    sphDen[i]=Math.min(1, sphDen[i]);
+  }
+  // Update fluid visualizer
+  const bars=document.querySelectorAll('.fluid-bar');
+  const totalDen=sphDen.reduce((a,v)=>a+v,0)/(SPH_W*SPH_H);
+  bars.forEach((b,i)=>{
+    const col=Math.floor(i/bars.length*SPH_W);
+    let d=0; for(let r=0;r<SPH_H;r++) d+=sphDen[r*SPH_W+col];
+    d/=SPH_H; b.style.height=Math.min(100,d*300)+'%';
+  });
+  document.getElementById('fluid-val').textContent=(totalDen*1000).toFixed(1)+' ρ';
+}
+
+// Apply SPH to particles (sample velocity field)
+function sphApply(){
+  const wx=94/SPH_W, wy=74/SPH_H;
+  const step=Math.ceil(COUNT/25000); // only apply to subset for perf
+  for(let i=0;i<COUNT;i+=step){
+    const i3=i*3;
+    const gx=Math.max(0,Math.min(SPH_W-1,Math.floor(posArr[i3]/wx+SPH_W/2)));
+    const gy=Math.max(0,Math.min(SPH_H-1,Math.floor(posArr[i3+1]/wy+SPH_H/2)));
+    const idx=gy*SPH_W+gx;
+    velArr[i3]  +=sphVx[idx]*0.12;
+    velArr[i3+1]+=sphVy[idx]*0.12;
+  }
+}
+
+// ══════════════════════════════════════════
+//  GRAVITY WELLS
+// ══════════════════════════════════════════
+const wellCvs=document.getElementById('well-cvs');
+const wellCtx=wellCvs.getContext('2d');
+wellCvs.width=innerWidth; wellCvs.height=innerHeight;
+
+function drawWells(){
+  wellCtx.clearRect(0,0,wellCvs.width,wellCvs.height);
+  const t=Date.now()/1000;
+  for(const w of gravityWells){
+    const sx=( w.x/94+0.5)*innerWidth;
+    const sy=(-w.y/74+0.5)*innerHeight;
+    // Pulsing ring
+    for(let ring=0;ring<3;ring++){
+      const phase=(t*0.6+ring*0.33)%1;
+      const rad=12+phase*28;
+      const alpha=(1-phase)*0.4;
+      wellCtx.beginPath();
+      wellCtx.arc(sx,sy,rad,0,Math.PI*2);
+      wellCtx.strokeStyle=`rgba(251,191,36,${alpha})`;
+      wellCtx.lineWidth=1;
+      wellCtx.stroke();
+    }
+    // Core dot
+    wellCtx.beginPath();
+    wellCtx.arc(sx,sy,3.5,0,Math.PI*2);
+    wellCtx.fillStyle='rgba(251,191,36,0.9)';
+    wellCtx.fill();
+  }
+  document.getElementById('well-cnt').textContent=gravityWells.length;
+}
+
+function applyGravityWells(){
+  for(const w of gravityWells){
+    const wx=w.x, wy=w.y;
+    for(let i=0;i<COUNT;i++){
+      const i3=i*3;
+      const dx=wx-posArr[i3], dy=wy-posArr[i3+1];
+      const dSq=dx*dx+dy*dy;
+      if(dSq<1800&&dSq>0.5){
+        const d=Math.sqrt(dSq);
+        const f=w.strength/(dSq+1);
+        velArr[i3]  +=dx/d*f;
+        velArr[i3+1]+=dy/d*f;
+      }
+    }
+  }
+}
+
+document.getElementById('well-clear').addEventListener('click',()=>{gravityWells=[];});
+
+// ══════════════════════════════════════════
+//  EMOTION / AUDIO ANALYSIS
+// ══════════════════════════════════════════
+const EMOTIONS=[
+  {name:'NEUTRAL',   icon:'🎵',desc:'balanced state · calm field',     valence:0.5, arousal:0.15, shape:null,         hue:0.55},
+  {name:'EXCITED',   icon:'🔥',desc:'high energy · supernova burst',    valence:0.9, arousal:0.92, shape:'supernova',  hue:0.07},
+  {name:'HAPPY',     icon:'✨',desc:'warm positive · bright galaxy',    valence:0.85,arousal:0.6,  shape:'galaxy',     hue:0.14},
+  {name:'CALM',      icon:'🌊',desc:'low arousal · nebula drift',       valence:0.65,arousal:0.1,  shape:'nebula',     hue:0.55},
+  {name:'SAD',       icon:'💧',desc:'low valence · slow collapse',      valence:0.15,arousal:0.12, shape:'blackhole',  hue:0.65},
+  {name:'TENSE',     icon:'⚡',desc:'high stress · crystal sharp',      valence:0.2, arousal:0.85, shape:'crystal',    hue:0.02},
+  {name:'WONDERING', icon:'🌀',desc:'curious · torus unfolding',        valence:0.6, arousal:0.45, shape:'torus',      hue:0.75},
+  {name:'ENERGETIC', icon:'🚀',desc:'driven · spacecraft launch',       valence:0.75,arousal:0.88, shape:'spacecraft', hue:0.1},
+];
+
+async function startMic(){
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    audioCtx=new AudioContext();
+    const src=audioCtx.createMediaStreamSource(stream);
+    analyser=audioCtx.createAnalyser();
+    analyser.fftSize=512; analyser.smoothingTimeConstant=0.8;
+    src.connect(analyser);
+    audioData=new Float32Array(analyser.frequencyBinCount);
+    micActive=true;
+    document.getElementById('mic-btn').classList.add('active');
+    document.getElementById('mic-btn').textContent='🔴';
+  } catch(e){ console.warn('Mic unavailable'); }
+}
+
+function stopMic(){
+  if(audioCtx){audioCtx.close();audioCtx=null;}
+  micActive=false;
+  document.getElementById('mic-btn').classList.remove('active');
+  document.getElementById('mic-btn').textContent='🎤';
+  setEmotion(EMOTIONS[0]);
+}
+
+function analyzeAudio(){
+  if(!analyser||!audioData) return;
+  analyser.getFloatFrequencyData(audioData);
+  const len=audioData.length;
+  // Energy bands
+  let sub=0,low=0,mid=0,high=0,count=0;
+  for(let i=0;i<len;i++){
+    const v=Math.max(0,audioData[i]+140)/140; // normalize -140..0 dB
+    if(i<len*0.05) sub+=v;
+    else if(i<len*0.2) low+=v;
+    else if(i<len*0.5) mid+=v;
+    else high+=v;
+    count++;
+  }
+  sub/=len*0.05; low/=len*0.15; mid/=len*0.3; high/=len*0.5;
+  const totalEnergy=(sub+low+mid+high)/4;
+  // Map to valence/arousal
+  // arousal = overall energy level
+  const arousal=Math.min(1,totalEnergy*1.8);
+  // valence heuristic: more mid relative to high = warmer = higher valence
+  const valence=Math.min(1,Math.max(0,0.5+(mid-high)*0.8+(low-sub)*0.3));
+
+  // Find nearest emotion
+  let bestE=EMOTIONS[0], bestD=999;
+  for(const e of EMOTIONS){
+    const d=Math.abs(e.valence-valence)+Math.abs(e.arousal-arousal);
+    if(d<bestD){bestD=d;bestE=e;}
+  }
+  if(bestE.name!==emotion.name) setEmotion(bestE);
+
+  document.getElementById('m-val').style.width=(valence*100)+'%';
+  document.getElementById('m-aro').style.width=(arousal*100)+'%';
+  if(shaderMat){
+    shaderMat.uniforms.uEmotionValence.value=valence;
+    shaderMat.uniforms.uEmotionArousal.value=arousal;
+  }
+}
+
+function setEmotion(e){
+  emotion=e;
+  document.getElementById('emo-icon').textContent=e.icon;
+  document.getElementById('emo-name').textContent=e.name;
+  document.getElementById('emo-desc').textContent=e.desc;
+  document.getElementById('s-emo').textContent=e.name;
+  if(e.shape) setShape(e.shape);
+}
+
+document.getElementById('mic-btn').addEventListener('click',()=>{
+  if(micActive) stopMic(); else startMic();
+});
+
+// ══════════════════════════════════════════
+//  GESTURE LEARNING
+// ══════════════════════════════════════════
+let currentLandmarks=null;
+
+function landmarksToSignature(lm){
+  if(!lm||lm.length<21) return null;
+  const wrist=lm[0];
+  const sig=[];
+  for(let i=1;i<21;i++){
+    sig.push(lm[i].x-wrist.x,lm[i].y-wrist.y,lm[i].z-wrist.z);
+  }
+  return sig;
+}
+
+function sigDistance(a,b){
+  if(!a||!b||a.length!==b.length) return 999;
+  let sum=0;
+  for(let i=0;i<a.length;i++){const d=a[i]-b[i];sum+=d*d;}
+  return Math.sqrt(sum);
+}
+
+function matchCustomGesture(lm){
+  if(!customGestures.length) return null;
+  const sig=landmarksToSignature(lm);
+  if(!sig) return null;
+  let best=null,bestD=0.18;
+  for(const cg of customGestures){
+    const d=sigDistance(sig,cg.signature);
+    if(d<bestD){bestD=d;best=cg;}
+  }
+  return best?best.name:null;
+}
+
+function renderCustomGestures(){
+  const list=document.getElementById('cg-list');
+  if(!customGestures.length){list.innerHTML='<div style="font-size:0.5rem;color:var(--fg3);padding:4px 0;">No gestures recorded yet</div>';return;}
+  list.innerHTML=customGestures.map((g,i)=>`
+    <div class="cg-item">
+      <span class="cg-name">${g.name}</span>
+      <button class="cg-del" data-i="${i}" title="Delete">✕</button>
+    </div>`).join('');
+  list.querySelectorAll('.cg-del').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      customGestures.splice(+btn.dataset.i,1);
+      localStorage.setItem('stellar_gestures',JSON.stringify(customGestures));
+      renderCustomGestures();
+    });
+  });
+}
+
+// Recording modal
+document.getElementById('learn-btn').addEventListener('click',()=>{
+  document.getElementById('rec-modal').classList.add('show');
+  document.getElementById('rec-name').value='';
+  document.getElementById('rec-cd').textContent='—';
+  document.getElementById('rec-start').disabled=false;
+});
+document.getElementById('rec-cancel').addEventListener('click',()=>{
+  document.getElementById('rec-modal').classList.remove('show');
+  isRecording=false;
+});
+document.getElementById('rec-start').addEventListener('click',()=>{
+  const name=document.getElementById('rec-name').value.trim();
+  if(!name){document.getElementById('rec-name').focus();return;}
+  recordName=name; recordFrames=[];
+  document.getElementById('rec-start').disabled=true;
+  let countdown=3;
+  document.getElementById('rec-cd').textContent=countdown;
+  const cdInterval=setInterval(()=>{
+    countdown--;
+    if(countdown>0){document.getElementById('rec-cd').textContent=countdown;}
+    else{
+      clearInterval(cdInterval);
+      document.getElementById('rec-cd').textContent='◉ REC';
+      isRecording=true;
+      setTimeout(()=>{
+        isRecording=false;
+        if(recordFrames.length>5){
+          // Average signature
+          const len=recordFrames[0].length;
+          const avg=new Array(len).fill(0);
+          for(const f of recordFrames) for(let i=0;i<len;i++) avg[i]+=f[i];
+          for(let i=0;i<len;i++) avg[i]/=recordFrames.length;
+          customGestures.push({name:recordName,signature:avg});
+          localStorage.setItem('stellar_gestures',JSON.stringify(customGestures));
+          renderCustomGestures();
+        }
+        document.getElementById('rec-cd').textContent='✓ Done';
+        setTimeout(()=>document.getElementById('rec-modal').classList.remove('show'),700);
+      },3000);
+    }
+  },1000);
+});
+
+// ══════════════════════════════════════════
+//  FORMATION PREDICTION
+// ══════════════════════════════════════════
+function trackFormationDwell(name){
+  const now=Date.now();
+  if(lastFormation!==name){
+    const elapsed=(now-dwellStart)/1000;
+    formationDwell[lastFormation]=(formationDwell[lastFormation]||0)+elapsed;
+    lastFormation=name; dwellStart=now;
+  }
+}
+
+function checkFormationSuggestion(){
+  const entries=Object.entries(formationDwell).filter(([k])=>k!==lastFormation);
+  if(!entries.length) return;
+  entries.sort((a,b)=>b[1]-a[1]);
+  const top=entries[0][0];
+  const topTime=entries[0][1];
+  if(topTime>12){
+    document.getElementById('sug-name').textContent=top.toUpperCase();
+    const banner=document.getElementById('suggest-banner');
+    banner.style.display='flex';
+    banner._sugTarget=top;
+    clearTimeout(suggestTimer);
+    suggestTimer=setTimeout(()=>banner.style.display='none',8000);
+  }
+}
+
+document.getElementById('sug-yes').addEventListener('click',()=>{
+  const banner=document.getElementById('suggest-banner');
+  setShape(banner._sugTarget);
+  banner.style.display='none';
+});
+document.getElementById('sug-no').addEventListener('click',()=>{
+  document.getElementById('suggest-banner').style.display='none';
+});
+
+// ══════════════════════════════════════════
+//  SLASH
+// ══════════════════════════════════════════
+const slashCvs=document.getElementById('slashcvs');
+const slashCtx=slashCvs.getContext('2d');
+slashCvs.width=innerWidth; slashCvs.height=innerHeight;
+
+function drawSlash(){
+  slashCtx.clearRect(0,0,slashCvs.width,slashCvs.height);
+  const now=Date.now();
+  slashPts=slashPts.filter(p=>now-p.t<360);
+  if(slashPts.length<2) return;
+  for(let i=1;i<slashPts.length;i++){
+    const a=1-(now-slashPts[i].t)/360;
+    slashCtx.beginPath();
+    slashCtx.moveTo(slashPts[i-1].x,slashPts[i-1].y);
+    slashCtx.lineTo(slashPts[i].x,slashPts[i].y);
+    slashCtx.strokeStyle=`rgba(45,212,191,${a*0.82})`;
+    slashCtx.lineWidth=a*3.5; slashCtx.lineCap='round';
+    slashCtx.shadowColor='#2dd4bf'; slashCtx.shadowBlur=12*a;
+    slashCtx.stroke();
+    slashCtx.strokeStyle=`rgba(255,255,255,${a*0.18})`;
+    slashCtx.lineWidth=a*1.2; slashCtx.stroke();
+  }
+}
+
+function detectSlash(){
+  if(slashPts.length<8) return;
+  const r=slashPts.slice(-8);
+  const dx=r[r.length-1].x-r[0].x, dy=r[r.length-1].y-r[0].y;
+  if(Math.sqrt(dx*dx+dy*dy)>160){setGestureUI('slash');triggerSlash(r);}
+}
+
+function triggerSlash(pts){
+  const mx=pts.reduce((a,p)=>a+p.x,0)/pts.length/innerWidth;
+  const my=pts.reduce((a,p)=>a+p.y,0)/pts.length/innerHeight;
+  const wx=(mx-0.5)*94,wy=(0.5-my)*74;
+  const dx=pts[pts.length-1].x-pts[0].x,dy=pts[pts.length-1].y-pts[0].y;
+  const len=Math.sqrt(dx*dx+dy*dy),nx=-dy/len,ny=dx/len;
+  for(let i=0;i<COUNT;i++){
+    const i3=i*3;
+    const pdx=posArr[i3]-wx,pdy=posArr[i3+1]-wy;
+    const dist=Math.sqrt(pdx*pdx+pdy*pdy);
+    if(dist<28){const w=(1-dist/28)*0.68;velArr[i3]+=nx*w+(Math.random()-0.5)*0.5;velArr[i3+1]+=ny*w+(Math.random()-0.5)*0.5;velArr[i3+2]+=(Math.random()-0.5)*0.38;}
+  }
+  setTimeout(()=>{if(currentGesture==='slash') setGestureUI('open');},360);
+}
+
+// ══════════════════════════════════════════
+//  HOLD RING
+// ══════════════════════════════════════════
+const holdRing=document.getElementById('holdring');
+const holdArc=holdRing.querySelector('.hr-a');
+const HOLD_MS=1200;
+
+function updateHoldRing(){
+  const h=hands[0];
+  if(currentGesture==='pinch'&&!isHeld){
+    wellHoldTimer+=16.7;
+    const prog=Math.min(wellHoldTimer/HOLD_MS,1);
+    holdArc.style.strokeDashoffset=188.4*(1-prog);
+    holdRing.style.display='block';
+    holdRing.style.left=(h.x/94*innerWidth*0.5+innerWidth*0.5-36)+'px';
+    holdRing.style.top=((-h.y/74)*innerHeight*0.5+innerHeight*0.5-36)+'px';
+    holdArc.style.stroke='#fbbf24';
+    if(prog>=1){
+      gravityWells.push({x:h.x,y:h.y,strength:0.8});
+      isHeld=true; setGestureUI('pinch');
+      setTimeout(()=>{isHeld=false;},500);
+    }
+  } else if(currentGesture==='fist'&&!isHeld){
+    holdTimer+=16.7;
+    const prog=Math.min(holdTimer/HOLD_MS,1);
+    holdArc.style.strokeDashoffset=188.4*(1-prog);
+    holdRing.style.display='block';
+    holdRing.style.left=(h.x/94*innerWidth*0.5+innerWidth*0.5-36)+'px';
+    holdRing.style.top=((-h.y/74)*innerHeight*0.5+innerHeight*0.5-36)+'px';
+    holdArc.style.stroke='#2dd4bf';
+    if(prog>=1){isHeld=true;setGestureUI('hold');}
+  } else {
+    holdTimer=0; wellHoldTimer=0;
+    holdArc.style.strokeDashoffset=188.4; holdRing.style.display='none';
+    if(currentGesture!=='fist'&&currentGesture!=='pinch') isHeld=false;
+  }
+}
+
+// ══════════════════════════════════════════
+//  PHYSICS LOOP
+// ══════════════════════════════════════════
+function physicsStep(){
+  const frozen=currentGesture==='hold'&&isHeld;
+  const R=54,R2=R*R;
+  for(let i=0;i<COUNT;i++){
+    const i3=i*3;
+    const px=posArr[i3],py=posArr[i3+1],pz=posArr[i3+2];
+    if(frozen){velArr[i3]*=0.93;velArr[i3+1]*=0.93;velArr[i3+2]*=0.93;posArr[i3]+=velArr[i3];posArr[i3+1]+=velArr[i3+1];posArr[i3+2]+=velArr[i3+2];continue;}
+    // Spring to target
+    velArr[i3]  +=(targetArr[i3]  -px)*SPRING;
+    velArr[i3+1]+=(targetArr[i3+1]-py)*SPRING;
+    velArr[i3+2]+=(targetArr[i3+2]-pz)*SPRING;
+    // Both hands
+    for(let h=0;h<2;h++){
+      if(!hands[h].active) continue;
+      const dx=hands[h].x-px,dy=hands[h].y-py;
+      const dSq=dx*dx+dy*dy;
+      if(dSq<R2){
+        const dist=Math.sqrt(dSq)||0.001,fo=1-dist/R;
+        const g=hands[h].gesture;
+        if(g==='open'){velArr[i3]-=dx/dist*fo*0.09*dist*0.14;velArr[i3+1]-=dy/dist*fo*0.09*dist*0.14;velArr[i3+2]+=(Math.random()-0.5)*fo*2.6;}
+        if(g==='pinch'){velArr[i3]+=dx/dist*fo*0.07*dist*0.11;velArr[i3+1]+=dy/dist*fo*0.07*dist*0.11;}
+        if(g==='fist'){velArr[i3]+=dx*0.13;velArr[i3+1]+=dy*0.13;}
+        if(g==='one'&&Math.abs(dy)<4.5){velArr[i3]+=(dx>0?1:-1)*0.75;velArr[i3+1]+=(Math.random()-0.5)*0.3;velArr[i3+2]+=(Math.random()-0.5)*0.3;}
+        if(g==='two'){const side=px<hands[h].x?-1:1;velArr[i3]+=side*fo*11;velArr[i3+1]+=(Math.random()-0.5)*fo*2.3;}
+        if(g==='ok'){const ang=Math.atan2(dy,dx);velArr[i3]+=(-Math.sin(ang))*0.065+dx*0.011;velArr[i3+1]+=(Math.cos(ang))*0.065+dy*0.011;}
+      }
+    }
+    // Two-hand compression
+    if(hands[0].active&&hands[1].active){
+      const sep=Math.hypot(hands[0].x-hands[1].x,hands[0].y-hands[1].y);
+      if(sep<20){
+        const mx=(hands[0].x+hands[1].x)/2,my=(hands[0].y+hands[1].y)/2;
+        const dx=px-mx,dy=py-my,d=Math.sqrt(dx*dx+dy*dy)||0.001;
+        const compression=(1-sep/20)*0.06;
+        velArr[i3]  +=dx/d*compression;
+        velArr[i3+1]+=dy/d*compression;
+      }
+    }
+    velArr[i3]*=DAMPING;velArr[i3+1]*=DAMPING;velArr[i3+2]*=DAMPING;
+    posArr[i3]+=velArr[i3];posArr[i3+1]+=velArr[i3+1];posArr[i3+2]+=velArr[i3+2];
+  }
+}
+
+// ══════════════════════════════════════════
+//  GESTURE SYSTEM
+// ══════════════════════════════════════════
+function setGestureUI(g){
+  currentGesture=g;
+  const info=GESTURE_INFO[g]||GESTURE_INFO.none;
+  document.getElementById('gh-name').textContent=info.n;
+  document.getElementById('gh-fx').textContent=info.f;
+  document.getElementById('s-g').textContent=info.n;
+}
+
+function detectGesture(lm){
+  // First check custom gestures
+  const custom=matchCustomGesture(lm);
+  if(custom) return custom;
+  const thumbUp=lm[4].x<lm[3].x;
+  const indexUp=lm[8].y<lm[6].y,midUp=lm[12].y<lm[10].y,ringUp=lm[16].y<lm[14].y,pinkyUp=lm[20].y<lm[18].y;
+  const cnt=[thumbUp,indexUp,midUp,ringUp,pinkyUp].filter(Boolean).length;
+  const dPinch=Math.hypot(lm[4].x-lm[8].x,lm[4].y-lm[8].y);
+  if(dPinch<0.055&&midUp&&ringUp&&pinkyUp) return 'ok';
+  if(dPinch<0.045) return 'pinch';
+  if(cnt<=1&&!indexUp) return 'fist';
+  if(cnt===2&&indexUp&&!midUp) return 'one';
+  if(cnt===3&&indexUp&&midUp&&!ringUp) return 'two';
+  if(cnt>=4) return 'open';
+  return 'open';
+}
+
+// ══════════════════════════════════════════
+//  SHAPE SWITCHING
+// ══════════════════════════════════════════
+function setShape(name){
+  const fl=document.getElementById('flash');
+  fl.classList.add('go');setTimeout(()=>fl.classList.remove('go'),120);
+  const d=buildShape(name);
+  targetArr=d.P;
+  ptsMesh.geometry.attributes.color.array.set(d.C);
+  ptsMesh.geometry.attributes.color.needsUpdate=true;
+  document.querySelectorAll('.sb').forEach(b=>b.classList.toggle('active',b.dataset.s===name));
+  document.getElementById('s-f').textContent=name.toUpperCase();
+  trackFormationDwell(name);
+  // Check suggestion after some dwell
+  clearTimeout(suggestTimer);
+  suggestTimer=setTimeout(checkFormationSuggestion,20000);
+}
+
+document.getElementById('sgrid').addEventListener('click',e=>{
+  const btn=e.target.closest('.sb'); if(btn) setShape(btn.dataset.s);
+});
+
+// ══════════════════════════════════════════
+//  RENDER LOOP
+// ══════════════════════════════════════════
+let sphFrame=0;
+function tick(){
+  requestAnimationFrame(tick);
+  orbitPhase+=0.015;
+
+  // FPS
+  fCount++;
+  const now=performance.now();
+  if(now-lastFPST>900){
+    fps=Math.round(fCount*1000/(now-lastFPST));
+    const el=document.getElementById('s-fps');
+    el.textContent=fps; el.className='sv2 '+(fps>45?'ok':fps>28?'warn':'bad');
+    document.getElementById('perf').style.display=fps<28?'block':'none';
+    fCount=0; lastFPST=now;
+  }
+
+  // Audio analysis
+  if(micActive) analyzeAudio();
+
+  // Physics
+  physicsStep();
+
+  // SPH every 3 frames for perf
+  if(++sphFrame%3===0){ sphStep(); sphApply(); }
+
+  // Gravity wells
+  if(gravityWells.length) applyGravityWells();
+  drawWells();
+
+  // Update GPU buffers
+  ptsMesh.geometry.attributes.position.array.set(posArr);
+  ptsMesh.geometry.attributes.position.needsUpdate=true;
+
+  // Uniforms
+  shaderMat.uniforms.uTime.value   =orbitPhase;
+  shaderMat.uniforms.uOrbit.value  =orbitPhase;
+  shaderMat.uniforms.uHand0.value.set(hands[0].x,hands[0].y,0);
+  shaderMat.uniforms.uHand1.value.set(hands[1].x,hands[1].y,0);
+  shaderMat.uniforms.uActive0.value=hands[0].active?1:0;
+  shaderMat.uniforms.uActive1.value=hands[1].active?1:0;
+  shaderMat.uniforms.uGesture0.value=GESTURE_ENUM[hands[0].gesture]||0;
+  shaderMat.uniforms.uGesture1.value=GESTURE_ENUM[hands[1].gesture]||0;
+  shaderMat.uniforms.uFrozen.value =(currentGesture==='hold'&&isHeld)?1:0;
+  shaderMat.uniforms.uEmotionArousal.value=emotion.arousal;
+  shaderMat.uniforms.uEmotionValence.value=emotion.valence;
+
+  updateHoldRing();
+  drawSlash();
+  ptsMesh.rotation.y+=0.0005;
+  renderer.render(scene,camera);
+}
+
+// ══════════════════════════════════════════
+//  MEDIAPIPE  (dual hand)
+// ══════════════════════════════════════════
+async function initAI(){
+  const video=document.getElementById('vid');
+  const canvas=document.getElementById('skelcvs');
+  const ctx=canvas.getContext('2d');
+  const stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480,facingMode:'user'}});
+  video.srcObject=stream; await video.play();
+
+  const hp=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+  hp.setOptions({maxNumHands:2,modelComplexity:1,minDetectionConfidence:0.7,minTrackingConfidence:0.7});
+
+  hp.onResults(res=>{
+    canvas.width=video.videoWidth||640; canvas.height=video.videoHeight||480;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    const lms=res.multiHandLandmarks||[];
+    const handedness=res.multiHandedness||[];
+    let activeCount=0;
+    // Reset
+    hands[0].active=false; hands[1].active=false;
+
+    lms.forEach((lm,idx)=>{
+      activeCount++;
+      // Map: index 0=primary (right in cam-mirrored), 1=secondary
+      const hi=Math.min(idx,1);
+      hands[hi].active=true;
+      hands[hi].x=(0.5-lm[9].x)*118;
+      hands[hi].y=(0.5-lm[9].y)*94;
+      const g=detectGesture(lm);
+      hands[hi].gesture=g;
+      if(hi===0) setGestureUI(g);
+
+      // Record
+      if(isRecording&&hi===0){
+        const sig=landmarksToSignature(lm);
+        if(sig) recordFrames.push(sig);
+      }
+
+      // Skeleton colors: hand 0 = teal, hand 1 = rose
+      const col=hi===0?'rgba(45,212,191,0.55)':'rgba(251,113,133,0.55)';
+      const jcols=hi===0?['#2dd4bf','#fb7185','#a78bfa','#fbbf24','#86efac']:['#fb7185','#2dd4bf','#fbbf24','#a78bfa','#34d399'];
+      ctx.strokeStyle=col; ctx.lineWidth=1.3;
+      HAND_CONNECTIONS.forEach(([a,b])=>{
+        ctx.beginPath();
+        ctx.moveTo(lm[a].x*canvas.width,lm[a].y*canvas.height);
+        ctx.lineTo(lm[b].x*canvas.width,lm[b].y*canvas.height);
+        ctx.stroke();
+      });
+      [[0,1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,16],[17,18,19,20]].forEach((grp,fi)=>{
+        ctx.fillStyle=jcols[fi];
+        grp.forEach(k=>{ctx.beginPath();ctx.arc(lm[k].x*canvas.width,lm[k].y*canvas.height,2.3,0,Math.PI*2);ctx.fill();});
+      });
+    });
+
+    if(!activeCount){
+      hands[0].active=false; hands[1].active=false;
+      document.getElementById('gh-name').textContent='SEARCHING…';
+      document.getElementById('gh-fx').textContent='position hand in view';
+    }
+    document.getElementById('s-hands').textContent=activeCount;
+  });
+
+  const cam=new Camera(video,{onFrame:async()=>await hp.send({image:video})});
+  await cam.start();
+}
+
+// ══════════════════════════════════════════
+//  LAUNCH
+// ══════════════════════════════════════════
+document.getElementById('btn-launch').addEventListener('click',async()=>{
+  const splash=document.getElementById('splash');
+  splash.classList.add('out');
+  setTimeout(()=>splash.style.display='none',900);
+  document.getElementById('ui').style.display='block';
+  renderCustomGestures();
+  init3D();
+  tick();
+  try{ await initAI(); }catch(e){console.warn('Camera unavailable — mouse fallback.');}
+});
+</script>
+</body>
+</html>
