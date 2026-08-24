@@ -18,7 +18,7 @@
 <br/>
 
 
-[**Live Demo**](#) &nbsp;·&nbsp; [**Report Bug**](https://github.com/ayuuXploits/stellar/issues) &nbsp;·&nbsp; [**Request Feature**](https://github.com/ayuuXploits/stellar/issues)
+[**Live Demo**](https://ayuuXploits.github.io/stellar-hands/) &nbsp;·&nbsp; [**Report Bug**](https://github.com/ayuuXploits/stellar/issues) &nbsp;·&nbsp; [**Request Feature**](https://github.com/ayuuXploits/stellar/issues)
 
 <br/>
 
