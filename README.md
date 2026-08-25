@@ -127,14 +127,12 @@ The entire engine — renderer, physics, AI tracking, and UI — lives in a sing
 ```bash
 git clone https://github.com/ayuuXploits/stellar.git
 cd stellar
-
 ```
 
 **Option A — open directly** *(mouse fallback only)*
 
 ```bash
 open stellar_handsv3.2.html
-
 ```
 
 **Option B — serve locally** *(enables webcam)*
@@ -142,9 +140,6 @@ open stellar_handsv3.2.html
 ```bash
 npx serve .
 # visit http://localhost:3000
-
-
-
 ```
 
 > **Note:** Webcam access requires a secure context (`https://` or `localhost`). Opening via `file://` automatically falls back to mouse mode.
@@ -152,7 +147,6 @@ npx serve .
 ---
 
 ## 📁 Project Structure
-
 ```
 stellar/
 ├── stellar_handsv3.2.html      # ← Latest build — full engine (renderer, AI, UI, physics)
@@ -184,8 +178,6 @@ Key constants at the top of the `<script>` block in `stellar_handsv3.2.html`:
 const COUNT   = 500_000;  // Particle count — reduce to ~100k on slower devices
 const DAMPING = 0.938;    // Velocity decay per frame (0 = instant stop, 1 = no decay)
 const SPRING  = 0.0065;   // Return-to-formation strength (higher = snappier)
-
-
 ```
 
 **Performance tuning guide:**
