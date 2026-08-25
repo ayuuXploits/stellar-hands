@@ -127,6 +127,7 @@ The entire engine — renderer, physics, AI tracking, and UI — lives in a sing
 ```bash
 git clone https://github.com/ayuuXploits/stellar.git
 cd stellar
+
 ```
 
 **Option A — open directly** *(mouse fallback only)*
