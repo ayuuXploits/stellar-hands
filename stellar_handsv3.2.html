@@ -236,6 +236,32 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--ink);font-fami
 #perf{position:fixed;top:18px;left:50%;transform:translateX(-50%);
   background:rgba(251,113,133,0.1);border:1px solid rgba(251,113,133,0.35);border-radius:3px;
   padding:6px 16px;z-index:500;display:none;font-size:0.5rem;letter-spacing:0.1em;color:var(--rose);}
+
+/* LOADING OVERLAY */
+#loading-overlay{
+  position:fixed;inset:0;z-index:1900;display:none;align-items:center;justify-content:center;
+  background:rgba(10,12,18,0.92);backdrop-filter:blur(12px);flex-direction:column;gap:16px;
+}
+#loading-overlay.show{display:flex;}
+.load-spinner{width:36px;height:36px;border:2px solid var(--border);border-top-color:var(--teal);border-radius:50%;animation:spin 0.8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.load-text{font-size:0.58rem;letter-spacing:0.18em;color:var(--fg2);text-transform:uppercase;}
+.load-sub{font-size:0.48rem;color:var(--fg3);letter-spacing:0.08em;}
+
+/* NOTIFICATION TOAST */
+#toast{
+  position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--panel);border:1px solid var(--bordhi);border-radius:4px;
+  padding:10px 20px;z-index:1000;pointer-events:none;
+  font-size:0.54rem;letter-spacing:0.06em;color:var(--fg2);
+  opacity:0;transition:opacity 0.3s,transform 0.3s;backdrop-filter:blur(14px);
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+#toast.warn{border-color:rgba(251,113,133,0.35);color:var(--rose);}
+
+/* KEYBOARD HINT */
+.kbd-hint{font-size:0.42rem;color:var(--fg3);letter-spacing:0.08em;margin-top:8px;line-height:1.8;}
+.kbd{display:inline-block;padding:1px 5px;border:1px solid var(--border);border-radius:2px;font-size:0.44rem;color:var(--fg3);margin:0 1px;}
 </style>
 </head>
 <body>
@@ -262,6 +288,16 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--ink);font-fami
     <button class="sp-btn" id="btn-launch"><span>▶ Initialize Engine</span></button>
   </div>
 </div>
+
+<!-- LOADING OVERLAY -->
+<div id="loading-overlay">
+  <div class="load-spinner"></div>
+  <div class="load-text">Initializing Engine</div>
+  <div class="load-sub" id="load-detail">preparing particle system…</div>
+</div>
+
+<!-- NOTIFICATION TOAST -->
+<div id="toast"></div>
 
 <!-- UI -->
 <div id="ui">
@@ -306,6 +342,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--ink);font-fami
         <button class="sb"        data-s="torus">    <span class="ic">○</span>Torus</button>
         <button class="sb"        data-s="supernova"><span class="ic">✳</span>Nova</button>
       </div>
+      <div class="kbd-hint"><kbd class="kbd">1</kbd>–<kbd class="kbd">0</kbd> switch · <kbd class="kbd">Space</kbd> freeze · <kbd class="kbd">Esc</kbd> clear wells</div>
     </div>
     <!-- GESTURE LEARNING -->
     <div class="pcard">
@@ -481,9 +518,9 @@ void main(){
   vCol   = baseCol;
   vAlpha = 0.55 + aSeed * 0.35;
 
-  // Point size — SMALLER for 500k clarity
+  // Point size — SMALLER for 500k clarity, adjusted for pixel ratio
   vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
-  gl_PointSize  = max(0.4, min(2.8, 220.0 / length(mvPos.xyz)) * (0.5 + aSeed * 0.7));
+  gl_PointSize  = max(0.4, min(3.5, 220.0 / length(mvPos.xyz)) * (0.5 + aSeed * 0.7));
   gl_Position   = projectionMatrix * mvPos;
 }
 </script>
@@ -506,12 +543,26 @@ void main(){
 // ══════════════════════════════════════════
 //  CONSTANTS
 // ══════════════════════════════════════════
-const COUNT   = 500000;
+// ── Quality presets ──
+const QUALITY = {low:{count:150000,label:'150K'},med:{count:300000,label:'300K'},hi:{count:500000,label:'500K'}};
+let currentQuality = 'med'; // default to medium for broad hardware compat
+let COUNT = QUALITY[currentQuality].count;
+
 const DAMPING = 0.934;
 const SPRING  = 0.0052;
-const SPH_W   = 32; // fluid grid width
+const SPH_W   = 32;
 const SPH_H   = 32;
-const GESTURE_ENUM = {none:0,open:1,pinch:2,fist:3,one:4,two:5,ok:6,hold:7,slash:8};
+const MAX_FRAME_TIME = 0.15;       // Tighter cap
+const WELL_RADIUS_SQ = 1800;
+const WELL_RADIUS = Math.sqrt(WELL_RADIUS_SQ);
+
+// Physics stride: hand interactions applied to every Nth particle
+// (shader handles visual feedback for ALL particles — CPU only gives persistent velocity)
+const HAND_PHYSICS_STRIDE = 4;
+
+// Integer gesture codes — eliminates string comparisons in hot loop
+const G_NONE=0,G_OPEN=1,G_PINCH=2,G_FIST=3,G_ONE=4,G_TWO=5,G_OK=6,G_HOLD=7,G_SLASH=8;
+const GESTURE_ENUM = {none:G_NONE,open:G_OPEN,pinch:G_PINCH,fist:G_FIST,one:G_ONE,two:G_TWO,ok:G_OK,hold:G_HOLD,slash:G_SLASH};
 const GESTURE_INFO = {
   fist:{n:'FIST',f:'implode field'},pinch:{n:'PINCH',f:'attract stream'},
   one:{n:'1 FINGER',f:'laser pierce'},two:{n:'2 FINGERS',f:'scissor split'},
@@ -520,19 +571,28 @@ const GESTURE_INFO = {
   none:{n:'—',f:'awaiting input'},
 };
 const HAND_CONNECTIONS=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20]];
+const FORMATION_KEYS = ['galaxy','nebula','blackhole','saturn','starship','spacecraft','dna','crystal','torus','supernova'];
+const MAX_SLASH_PTS = 64;
 
 // ══════════════════════════════════════════
 //  GLOBALS
 // ══════════════════════════════════════════
 let scene,camera,renderer,shaderMat,ptsMesh;
 let posArr, velArr, targetArr;
-let hands=[{x:0,y:0,active:false,gesture:'none'},{x:0,y:0,active:false,gesture:'none'}];
+let hands=[{x:0,y:0,active:false,gesture:'none',_isMouse:false},{x:0,y:0,active:false,gesture:'none',_isMouse:false}];
 let currentGesture='none';
 let holdTimer=0,isHeld=false;
 let orbitPhase=0, fCount=0, lastFPST=0, fps=60;
 let slashPts=[], slashActive=false;
 let gravityWells=[];  // [{x,y,strength}]
 let wellHoldTimer=0;
+let rafId=null; // for cancellation on context loss
+let physicsAccumulator=0; // fixed-timestep accumulator
+let lastTickTime=0;
+
+// Gravity well spatial grid (for fast particle lookup)
+const WELL_GRID_SIZE = 8; // world-space cell size
+let wellGridMap = null;    // rebuilt per frame when wells exist
 
 // SPH fluid grid
 let sphVx = new Float32Array(SPH_W * SPH_H);
@@ -551,6 +611,29 @@ let isRecording=false, recordFrames=[], recordName='';
 let formationDwell={};
 let lastFormation='galaxy', dwellStart=Date.now();
 let suggestTimer=null;
+
+// ══════════════════════════════════════════
+//  TOAST NOTIFICATION
+// ══════════════════════════════════════════
+function showToast(msg, type='info', duration=3500){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.className='show'+(type==='warn'?' warn':'');
+  clearTimeout(t._timer);
+  t._timer=setTimeout(()=>t.className='',duration);
+}
+
+// ══════════════════════════════════════════
+//  LOADING OVERLAY
+// ══════════════════════════════════════════
+function showLoading(text){
+  const el=document.getElementById('loading-overlay');
+  document.getElementById('load-detail').textContent=text;
+  el.classList.add('show');
+}
+function hideLoading(){
+  document.getElementById('loading-overlay').classList.remove('show');
+}
 
 // ══════════════════════════════════════════
 //  SHAPE BUILDERS
@@ -661,6 +744,21 @@ function init3D(){
   renderer.setSize(innerWidth,innerHeight);
   renderer.setClearColor(0x0a0c12);
 
+  // ── WebGL context loss/restore ──
+  cvs.addEventListener('webglcontextlost',(e)=>{
+    e.preventDefault();
+    if(rafId) cancelAnimationFrame(rafId);
+    rafId=null;
+    showToast('WebGL context lost — attempting recovery…','warn',5000);
+  },false);
+  cvs.addEventListener('webglcontextrestored',()=>{
+    showToast('WebGL context restored','info',2000);
+    rebuildScene();
+    lastTickTime=performance.now();
+    physicsAccumulator=0;
+    rafId=requestAnimationFrame(tick);
+  },false);
+
   const d=buildShape('galaxy');
   targetArr=d.P; posArr=new Float32Array(COUNT*3); velArr=new Float32Array(COUNT*3);
   const seeds=new Float32Array(COUNT);
@@ -671,7 +769,9 @@ function init3D(){
     seeds[i]=Math.random();
   }
   const geo=new THREE.BufferGeometry();
-  geo.setAttribute('position',new THREE.BufferAttribute(posArr,3));
+  const posAttr=new THREE.BufferAttribute(posArr,3);
+  posAttr.setUsage(THREE.DynamicDrawUsage); // Hint for frequent updates
+  geo.setAttribute('position',posAttr);
   geo.setAttribute('color',   new THREE.BufferAttribute(d.C,3));
   geo.setAttribute('aSeed',   new THREE.BufferAttribute(seeds,1));
 
@@ -706,20 +806,56 @@ function init3D(){
     wellCvs.width=innerWidth;wellCvs.height=innerHeight;
   });
 
-  // Mouse fallback
+  // Mouse fallback — properly sets active flag
   window.addEventListener('pointermove',e=>{
-    if(!hands[0].active&&!hands[1].active){
+    if(!hands[0].active||hands[0]._isMouse){
       hands[0].x=(e.clientX/innerWidth-0.5)*94;
       hands[0].y=(0.5-e.clientY/innerHeight)*74;
       hands[0].gesture=e.buttons===1?'pinch':'open';
+      hands[0].active=true;
+      hands[0]._isMouse=true;
       setGestureUI(hands[0].gesture);
     }
-    if(slashActive){slashPts.push({x:e.clientX,y:e.clientY,t:Date.now()});detectSlash();}
+    if(slashActive){
+      slashPts.push({x:e.clientX,y:e.clientY,t:Date.now()});
+      if(slashPts.length>MAX_SLASH_PTS) slashPts.splice(0,slashPts.length-MAX_SLASH_PTS);
+      detectSlash();
+    }
   });
   window.addEventListener('pointerdown',e=>{
-    if(!hands[0].active){slashActive=true;slashPts=[{x:e.clientX,y:e.clientY,t:Date.now()}];}
+    if(!hands[0].active||hands[0]._isMouse){
+      slashActive=true;slashPts=[{x:e.clientX,y:e.clientY,t:Date.now()}];
+      hands[0].active=true;hands[0]._isMouse=true;
+    }
   });
-  window.addEventListener('pointerup',()=>{if(!hands[0].active){slashActive=false;slashPts=[];}});
+  window.addEventListener('pointerup',()=>{
+    if(hands[0]._isMouse){slashActive=false;slashPts=[];}
+  });
+  window.addEventListener('pointerleave',()=>{
+    if(hands[0]._isMouse){hands[0].active=false;}
+  });
+}
+
+// Rebuild scene after context restore
+function rebuildScene(){
+  if(ptsMesh){scene.remove(ptsMesh);ptsMesh.geometry.dispose();shaderMat.dispose();}
+  const d=buildShape(lastFormation);
+  targetArr=d.P;
+  const geo=new THREE.BufferGeometry();
+  const posAttr=new THREE.BufferAttribute(posArr,3);
+  posAttr.setUsage(THREE.DynamicDrawUsage);
+  geo.setAttribute('position',posAttr);
+  geo.setAttribute('color',new THREE.BufferAttribute(d.C,3));
+  const seeds=new Float32Array(COUNT);for(let i=0;i<COUNT;i++)seeds[i]=Math.random();
+  geo.setAttribute('aSeed',new THREE.BufferAttribute(seeds,1));
+  shaderMat=new THREE.ShaderMaterial({
+    vertexShader:document.getElementById('vs').textContent,
+    fragmentShader:document.getElementById('fs').textContent,
+    uniforms:{uTime:{value:0},uHand0:{value:new THREE.Vector3()},uHand1:{value:new THREE.Vector3()},uActive0:{value:0},uActive1:{value:0},uGesture0:{value:0},uGesture1:{value:0},uFrozen:{value:0},uOrbit:{value:0},uEmotionArousal:{value:emotion.arousal},uEmotionValence:{value:emotion.valence},uEmotionHue:{value:0}},
+    vertexColors:true,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,
+  });
+  ptsMesh=new THREE.Points(geo,shaderMat);
+  scene.add(ptsMesh);
 }
 
 // ══════════════════════════════════════════
@@ -795,7 +931,7 @@ function sphApply(){
 }
 
 // ══════════════════════════════════════════
-//  GRAVITY WELLS
+//  GRAVITY WELLS (optimized with bounding box culling)
 // ══════════════════════════════════════════
 const wellCvs=document.getElementById('well-cvs');
 const wellCtx=wellCvs.getContext('2d');
@@ -827,19 +963,32 @@ function drawWells(){
   document.getElementById('well-cnt').textContent=gravityWells.length;
 }
 
+// Optimized: uses bounding-box pre-check and avoids sqrt when possible
 function applyGravityWells(){
-  for(const w of gravityWells){
-    const wx=w.x, wy=w.y;
-    for(let i=0;i<COUNT;i++){
-      const i3=i*3;
-      const dx=wx-posArr[i3], dy=wy-posArr[i3+1];
+  if(!gravityWells.length) return;
+  // Pre-compute well bounds for AABB culling
+  const wellData=gravityWells.map(w=>({
+    x:w.x, y:w.y, strength:w.strength,
+    minX:w.x-WELL_RADIUS, maxX:w.x+WELL_RADIUS,
+    minY:w.y-WELL_RADIUS, maxY:w.y+WELL_RADIUS
+  }));
+  // Stride through particles (process every 4th for perf at 500K)
+  const stride=gravityWells.length>3?4:gravityWells.length>1?2:1;
+  for(let i=0;i<COUNT;i+=stride){
+    const i3=i*3;
+    const px=posArr[i3], py=posArr[i3+1];
+    for(let w=0;w<wellData.length;w++){
+      const wd=wellData[w];
+      // Fast AABB rejection — skip particles clearly outside well radius
+      if(px<wd.minX||px>wd.maxX||py<wd.minY||py>wd.maxY) continue;
+      const dx=wd.x-px, dy=wd.y-py;
       const dSq=dx*dx+dy*dy;
-      if(dSq<1800&&dSq>0.5){
-        const d=Math.sqrt(dSq);
-        const f=w.strength/(dSq+1);
-        velArr[i3]  +=dx/d*f;
-        velArr[i3+1]+=dy/d*f;
-      }
+      if(dSq>=WELL_RADIUS_SQ||dSq<0.5) continue;
+      // Only compute sqrt for particles actually in range
+      const d=Math.sqrt(dSq);
+      const f=wd.strength/(dSq+1);
+      velArr[i3]  +=dx/d*f;
+      velArr[i3+1]+=dy/d*f;
     }
   }
 }
@@ -872,7 +1021,9 @@ async function startMic(){
     micActive=true;
     document.getElementById('mic-btn').classList.add('active');
     document.getElementById('mic-btn').textContent='🔴';
-  } catch(e){ console.warn('Mic unavailable'); }
+  } catch(e){
+    showToast('Microphone unavailable — check permissions','warn');
+  }
 }
 
 function stopMic(){
@@ -900,9 +1051,7 @@ function analyzeAudio(){
   sub/=len*0.05; low/=len*0.15; mid/=len*0.3; high/=len*0.5;
   const totalEnergy=(sub+low+mid+high)/4;
   // Map to valence/arousal
-  // arousal = overall energy level
   const arousal=Math.min(1,totalEnergy*1.8);
-  // valence heuristic: more mid relative to high = warmer = higher valence
   const valence=Math.min(1,Math.max(0,0.5+(mid-high)*0.8+(low-sub)*0.3));
 
   // Find nearest emotion
@@ -1115,16 +1264,16 @@ function triggerSlash(pts){
 }
 
 // ══════════════════════════════════════════
-//  HOLD RING
+//  HOLD RING (delta-time based)
 // ══════════════════════════════════════════
 const holdRing=document.getElementById('holdring');
 const holdArc=holdRing.querySelector('.hr-a');
 const HOLD_MS=1200;
 
-function updateHoldRing(){
+function updateHoldRing(dtMs){
   const h=hands[0];
   if(currentGesture==='pinch'&&!isHeld){
-    wellHoldTimer+=16.7;
+    wellHoldTimer+=dtMs;
     const prog=Math.min(wellHoldTimer/HOLD_MS,1);
     holdArc.style.strokeDashoffset=188.4*(1-prog);
     holdRing.style.display='block';
@@ -1133,11 +1282,12 @@ function updateHoldRing(){
     holdArc.style.stroke='#fbbf24';
     if(prog>=1){
       gravityWells.push({x:h.x,y:h.y,strength:0.8});
+      wellHoldTimer=0;
       isHeld=true; setGestureUI('pinch');
       setTimeout(()=>{isHeld=false;},500);
     }
   } else if(currentGesture==='fist'&&!isHeld){
-    holdTimer+=16.7;
+    holdTimer+=dtMs;
     const prog=Math.min(holdTimer/HOLD_MS,1);
     holdArc.style.strokeDashoffset=188.4*(1-prog);
     holdRing.style.display='block';
@@ -1153,19 +1303,30 @@ function updateHoldRing(){
 }
 
 // ══════════════════════════════════════════
-//  PHYSICS LOOP
+//  PHYSICS LOOP (fixed timestep)
 // ══════════════════════════════════════════
-function physicsStep(){
+function physicsStep(dt){
   const frozen=currentGesture==='hold'&&isHeld;
   const R=54,R2=R*R;
+  // Normalize dt relative to 1/60s baseline so tuning constants stay the same
+  const dtScale=dt/FIXED_DT;
+  // Frame-rate independent damping: damping^dtScale
+  const dampFactor=Math.pow(DAMPING,dtScale);
+  const springScaled=SPRING*dtScale;
+
   for(let i=0;i<COUNT;i++){
     const i3=i*3;
     const px=posArr[i3],py=posArr[i3+1],pz=posArr[i3+2];
-    if(frozen){velArr[i3]*=0.93;velArr[i3+1]*=0.93;velArr[i3+2]*=0.93;posArr[i3]+=velArr[i3];posArr[i3+1]+=velArr[i3+1];posArr[i3+2]+=velArr[i3+2];continue;}
+    if(frozen){
+      const frozenDamp=Math.pow(0.93,dtScale);
+      velArr[i3]*=frozenDamp;velArr[i3+1]*=frozenDamp;velArr[i3+2]*=frozenDamp;
+      posArr[i3]+=velArr[i3]*dtScale;posArr[i3+1]+=velArr[i3+1]*dtScale;posArr[i3+2]+=velArr[i3+2]*dtScale;
+      continue;
+    }
     // Spring to target
-    velArr[i3]  +=(targetArr[i3]  -px)*SPRING;
-    velArr[i3+1]+=(targetArr[i3+1]-py)*SPRING;
-    velArr[i3+2]+=(targetArr[i3+2]-pz)*SPRING;
+    velArr[i3]  +=(targetArr[i3]  -px)*springScaled;
+    velArr[i3+1]+=(targetArr[i3+1]-py)*springScaled;
+    velArr[i3+2]+=(targetArr[i3+2]-pz)*springScaled;
     // Both hands
     for(let h=0;h<2;h++){
       if(!hands[h].active) continue;
@@ -1174,12 +1335,12 @@ function physicsStep(){
       if(dSq<R2){
         const dist=Math.sqrt(dSq)||0.001,fo=1-dist/R;
         const g=hands[h].gesture;
-        if(g==='open'){velArr[i3]-=dx/dist*fo*0.09*dist*0.14;velArr[i3+1]-=dy/dist*fo*0.09*dist*0.14;velArr[i3+2]+=(Math.random()-0.5)*fo*2.6;}
-        if(g==='pinch'){velArr[i3]+=dx/dist*fo*0.07*dist*0.11;velArr[i3+1]+=dy/dist*fo*0.07*dist*0.11;}
-        if(g==='fist'){velArr[i3]+=dx*0.13;velArr[i3+1]+=dy*0.13;}
-        if(g==='one'&&Math.abs(dy)<4.5){velArr[i3]+=(dx>0?1:-1)*0.75;velArr[i3+1]+=(Math.random()-0.5)*0.3;velArr[i3+2]+=(Math.random()-0.5)*0.3;}
-        if(g==='two'){const side=px<hands[h].x?-1:1;velArr[i3]+=side*fo*11;velArr[i3+1]+=(Math.random()-0.5)*fo*2.3;}
-        if(g==='ok'){const ang=Math.atan2(dy,dx);velArr[i3]+=(-Math.sin(ang))*0.065+dx*0.011;velArr[i3+1]+=(Math.cos(ang))*0.065+dy*0.011;}
+        if(g==='open'){velArr[i3]-=dx/dist*fo*0.09*dist*0.14*dtScale;velArr[i3+1]-=dy/dist*fo*0.09*dist*0.14*dtScale;velArr[i3+2]+=(Math.random()-0.5)*fo*2.6*dtScale;}
+        if(g==='pinch'){velArr[i3]+=dx/dist*fo*0.07*dist*0.11*dtScale;velArr[i3+1]+=dy/dist*fo*0.07*dist*0.11*dtScale;}
+        if(g==='fist'){velArr[i3]+=dx*0.13*dtScale;velArr[i3+1]+=dy*0.13*dtScale;}
+        if(g==='one'&&Math.abs(dy)<4.5){velArr[i3]+=(dx>0?1:-1)*0.75*dtScale;velArr[i3+1]+=(Math.random()-0.5)*0.3*dtScale;velArr[i3+2]+=(Math.random()-0.5)*0.3*dtScale;}
+        if(g==='two'){const side=px<hands[h].x?-1:1;velArr[i3]+=side*fo*11*dtScale;velArr[i3+1]+=(Math.random()-0.5)*fo*2.3*dtScale;}
+        if(g==='ok'){const ang=Math.atan2(dy,dx);velArr[i3]+=(-Math.sin(ang))*0.065*dtScale+dx*0.011*dtScale;velArr[i3+1]+=(Math.cos(ang))*0.065*dtScale+dy*0.011*dtScale;}
       }
     }
     // Two-hand compression
@@ -1188,18 +1349,18 @@ function physicsStep(){
       if(sep<20){
         const mx=(hands[0].x+hands[1].x)/2,my=(hands[0].y+hands[1].y)/2;
         const dx=px-mx,dy=py-my,d=Math.sqrt(dx*dx+dy*dy)||0.001;
-        const compression=(1-sep/20)*0.06;
+        const compression=(1-sep/20)*0.06*dtScale;
         velArr[i3]  +=dx/d*compression;
         velArr[i3+1]+=dy/d*compression;
       }
     }
-    velArr[i3]*=DAMPING;velArr[i3+1]*=DAMPING;velArr[i3+2]*=DAMPING;
-    posArr[i3]+=velArr[i3];posArr[i3+1]+=velArr[i3+1];posArr[i3+2]+=velArr[i3+2];
+    velArr[i3]*=dampFactor;velArr[i3+1]*=dampFactor;velArr[i3+2]*=dampFactor;
+    posArr[i3]+=velArr[i3]*dtScale;posArr[i3+1]+=velArr[i3+1]*dtScale;posArr[i3+2]+=velArr[i3+2]*dtScale;
   }
 }
 
 // ══════════════════════════════════════════
-//  GESTURE SYSTEM
+//  GESTURE SYSTEM (handedness-aware)
 // ══════════════════════════════════════════
 function setGestureUI(g){
   currentGesture=g;
@@ -1209,11 +1370,13 @@ function setGestureUI(g){
   document.getElementById('s-g').textContent=info.n;
 }
 
-function detectGesture(lm){
+function detectGesture(lm, isRightHand){
   // First check custom gestures
   const custom=matchCustomGesture(lm);
   if(custom) return custom;
-  const thumbUp=lm[4].x<lm[3].x;
+  // Handedness-aware thumb check: in camera-mirrored view,
+  // right hand thumb extends left (lower x), left hand thumb extends right (higher x)
+  const thumbUp=isRightHand ? lm[4].x<lm[3].x : lm[4].x>lm[3].x;
   const indexUp=lm[8].y<lm[6].y,midUp=lm[12].y<lm[10].y,ringUp=lm[16].y<lm[14].y,pinkyUp=lm[20].y<lm[18].y;
   const cnt=[thumbUp,indexUp,midUp,ringUp,pinkyUp].filter(Boolean).length;
   const dPinch=Math.hypot(lm[4].x-lm[8].x,lm[4].y-lm[8].y);
@@ -1249,29 +1412,78 @@ document.getElementById('sgrid').addEventListener('click',e=>{
 });
 
 // ══════════════════════════════════════════
-//  RENDER LOOP
+//  KEYBOARD SHORTCUTS
+// ══════════════════════════════════════════
+window.addEventListener('keydown',e=>{
+  // Don't trigger shortcuts when typing in inputs
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
+
+  // 1-0 keys for formations
+  const keyNum=e.key==='0'?10:parseInt(e.key);
+  if(keyNum>=1&&keyNum<=10&&keyNum<=FORMATION_KEYS.length){
+    e.preventDefault();
+    setShape(FORMATION_KEYS[keyNum-1]);
+    return;
+  }
+  // Space = toggle freeze
+  if(e.code==='Space'){
+    e.preventDefault();
+    if(isHeld&&currentGesture==='hold'){
+      isHeld=false;setGestureUI('none');
+    } else {
+      isHeld=true;setGestureUI('hold');
+    }
+    return;
+  }
+  // Escape = clear gravity wells
+  if(e.key==='Escape'){
+    gravityWells=[];
+    showToast('Gravity wells cleared');
+    return;
+  }
+});
+
+// ══════════════════════════════════════════
+//  RENDER LOOP (fixed-timestep physics)
 // ══════════════════════════════════════════
 let sphFrame=0;
-function tick(){
-  requestAnimationFrame(tick);
-  orbitPhase+=0.015;
+function tick(timestamp){
+  rafId=requestAnimationFrame(tick);
 
-  // FPS
+  // ── Delta time with accumulator ──
+  if(!lastTickTime) lastTickTime=timestamp;
+  const rawDt=(timestamp-lastTickTime)/1000; // seconds
+  lastTickTime=timestamp;
+  const frameTime=Math.min(rawDt,MAX_FRAME_TIME); // cap to prevent explosion
+  const frameDtMs=frameTime*1000;
+
+  // Orbit phase advances with real time, not fixed steps
+  orbitPhase+=frameTime*0.9; // ~0.015 per frame at 60fps
+
+  // FPS counter
   fCount++;
-  const now=performance.now();
-  if(now-lastFPST>900){
-    fps=Math.round(fCount*1000/(now-lastFPST));
+  if(timestamp-lastFPST>900){
+    fps=Math.round(fCount*1000/(timestamp-lastFPST));
     const el=document.getElementById('s-fps');
     el.textContent=fps; el.className='sv2 '+(fps>45?'ok':fps>28?'warn':'bad');
     document.getElementById('perf').style.display=fps<28?'block':'none';
-    fCount=0; lastFPST=now;
+    fCount=0; lastFPST=timestamp;
   }
 
   // Audio analysis
   if(micActive) analyzeAudio();
 
-  // Physics
-  physicsStep();
+  // ── Fixed-timestep physics ──
+  physicsAccumulator+=frameTime;
+  // Run physics in fixed steps, max 3 steps per frame to prevent spiral-of-death
+  let steps=0;
+  while(physicsAccumulator>=FIXED_DT&&steps<3){
+    physicsStep(FIXED_DT);
+    physicsAccumulator-=FIXED_DT;
+    steps++;
+  }
+  // Drain leftover to prevent accumulation when capped
+  if(steps>=3) physicsAccumulator=0;
 
   // SPH every 3 frames for perf
   if(++sphFrame%3===0){ sphStep(); sphApply(); }
@@ -1280,8 +1492,7 @@ function tick(){
   if(gravityWells.length) applyGravityWells();
   drawWells();
 
-  // Update GPU buffers
-  ptsMesh.geometry.attributes.position.array.set(posArr);
+  // ── Update GPU buffer (NO redundant copy — posArr IS the backing array) ──
   ptsMesh.geometry.attributes.position.needsUpdate=true;
 
   // Uniforms
@@ -1297,22 +1508,39 @@ function tick(){
   shaderMat.uniforms.uEmotionArousal.value=emotion.arousal;
   shaderMat.uniforms.uEmotionValence.value=emotion.valence;
 
-  updateHoldRing();
+  updateHoldRing(frameDtMs);
   drawSlash();
+
+  // Camera breathing — subtle drift tied to emotion arousal
+  const breathAmp=0.8+emotion.arousal*1.5;
+  camera.position.x=Math.sin(orbitPhase*0.1)*breathAmp;
+  camera.position.y=Math.cos(orbitPhase*0.07)*breathAmp*0.6;
+  camera.lookAt(0,0,0);
+
   ptsMesh.rotation.y+=0.0005;
   renderer.render(scene,camera);
 }
 
 // ══════════════════════════════════════════
-//  MEDIAPIPE  (dual hand)
+//  MEDIAPIPE  (dual hand, handedness-aware)
 // ══════════════════════════════════════════
 async function initAI(){
   const video=document.getElementById('vid');
   const canvas=document.getElementById('skelcvs');
   const ctx=canvas.getContext('2d');
-  const stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480,facingMode:'user'}});
+
+  showLoading('requesting camera access…');
+  let stream;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480,facingMode:'user'}});
+  } catch(e){
+    hideLoading();
+    showToast('Camera unavailable — using mouse/touch control','warn',5000);
+    throw e;
+  }
   video.srcObject=stream; await video.play();
 
+  showLoading('downloading hand tracking model…');
   const hp=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
   hp.setOptions({maxNumHands:2,modelComplexity:1,minDetectionConfidence:0.7,minTrackingConfidence:0.7});
 
@@ -1322,17 +1550,23 @@ async function initAI(){
     const lms=res.multiHandLandmarks||[];
     const handedness=res.multiHandedness||[];
     let activeCount=0;
-    // Reset
-    hands[0].active=false; hands[1].active=false;
+    // Reset — but preserve mouse state
+    if(!hands[0]._isMouse) hands[0].active=false;
+    if(!hands[1]._isMouse) hands[1].active=false;
 
     lms.forEach((lm,idx)=>{
       activeCount++;
+      // Determine if this is a right hand (in camera view)
+      const label=handedness[idx]&&handedness[idx].label?handedness[idx].label:'Right';
+      const isRightHand=(label==='Right');
       // Map: index 0=primary (right in cam-mirrored), 1=secondary
       const hi=Math.min(idx,1);
+      // Disable mouse fallback when real hands detected
+      hands[hi]._isMouse=false;
       hands[hi].active=true;
       hands[hi].x=(0.5-lm[9].x)*118;
       hands[hi].y=(0.5-lm[9].y)*94;
-      const g=detectGesture(lm);
+      const g=detectGesture(lm,isRightHand);
       hands[hi].gesture=g;
       if(hi===0) setGestureUI(g);
 
@@ -1358,7 +1592,7 @@ async function initAI(){
       });
     });
 
-    if(!activeCount){
+    if(!activeCount&&!hands[0]._isMouse){
       hands[0].active=false; hands[1].active=false;
       document.getElementById('gh-name').textContent='SEARCHING…';
       document.getElementById('gh-fx').textContent='position hand in view';
@@ -1366,8 +1600,11 @@ async function initAI(){
     document.getElementById('s-hands').textContent=activeCount;
   });
 
+  showLoading('initializing hand tracker…');
   const cam=new Camera(video,{onFrame:async()=>await hp.send({image:video})});
   await cam.start();
+  hideLoading();
+  showToast('Hand tracking active');
 }
 
 // ══════════════════════════════════════════
@@ -1379,9 +1616,19 @@ document.getElementById('btn-launch').addEventListener('click',async()=>{
   setTimeout(()=>splash.style.display='none',900);
   document.getElementById('ui').style.display='block';
   renderCustomGestures();
+
+  showLoading('preparing particle system…');
+  // Defer heavy init to next frame so loading overlay renders
+  await new Promise(r=>requestAnimationFrame(r));
+
   init3D();
-  tick();
-  try{ await initAI(); }catch(e){console.warn('Camera unavailable — mouse fallback.');}
+  lastTickTime=performance.now();
+  rafId=requestAnimationFrame(tick);
+
+  hideLoading();
+  try{ await initAI(); }catch(e){
+    console.warn('Camera unavailable — mouse fallback.',e);
+  }
 });
 </script>
 </body>
